@@ -63,7 +63,13 @@ Normalization is bounded and non-mutating: scalar values are length-limited,
 percent-decoded once, Unicode-normalized with NFKC, and lower-cased before
 matching. Malformed encodings and safety-limit exhaustion produce an error
 status rather than a clean result. Nested objects are traversed iteratively
-with fixed depth, node, value, and finding limits.
+with fixed depth, node, value, byte, cycle, and finding limits. Query, JSON,
+route-parameter, and header parser adapters are exported for integrations that
+need explicit parser boundaries. JSON text is parsed only through the explicit
+bounded adapter; the SDK does not implicitly parse request body strings.
+Header parsing exposes only bounded `user-agent`, `accept-language`, and
+`content-type` values to plugins and excludes credentials and forwarding
+headers.
 
 ## Express integration
 

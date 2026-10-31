@@ -22,6 +22,19 @@ export type {
 } from './detection/types.js';
 export type { Detector } from './detection/types.js';
 export { asDetectionPlugin, isDetectionPlugin } from './detection/plugin.js';
+export {
+  headersParser,
+  jsonParser,
+  queryParser,
+  routeParamsParser,
+} from './detection/parsers/index.js';
+export type {
+  ParsedComponent,
+  ParserAdapter,
+  ParserError,
+  ParserResult,
+  SanitizedHeaders,
+} from './detection/parsers/index.js';
 export { LayeredRateLimiter } from './rate-limit/limiter.js';
 export { InMemoryAtomicCounterStore } from './rate-limit/store.js';
 export type {

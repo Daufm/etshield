@@ -1,6 +1,6 @@
 import type { DetectionPlugin, Detector, DetectionRequest, DetectionResult } from './types.js';
 import { DEFAULT_DETECTION_BUDGET } from './types.js';
-import { normalizeRequest } from './normalization.js';
+import { normalizeRequest } from './normalization/v1.js';
 import { nosqlInjectionDetector } from './nosql-injection.js';
 import { pathTraversalDetector } from './path-traversal.js';
 import { sqlInjectionDetector } from './sql-injection.js';
@@ -39,6 +39,12 @@ export class DetectionEngine {
         message: 'Request inspection reached a configured safety limit.',
       });
     }
+    for (const parserError of normalization.parserErrors) {
+      errors.push({
+        code: 'parser_error' as const,
+        message: parserError.message,
+      });
+    }
 
     const findings = [];
     for (const detector of this.detectors) {
@@ -49,6 +55,7 @@ export class DetectionEngine {
             request,
             values: normalization.values,
             budget,
+            headers: normalization.headers,
           }),
         );
       } catch {

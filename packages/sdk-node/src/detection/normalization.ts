@@ -5,8 +5,13 @@ import type {
   NormalizedValue,
 } from './types.js';
 import { MAX_INPUT_DEPTH, MAX_INPUT_NODES, MAX_INPUT_STRING_LENGTH } from './types.js';
+import { headersParser } from './parsers/headers.js';
+import { jsonParser } from './parsers/json.js';
+import { queryParser } from './parsers/query.js';
+import { routeParamsParser } from './parsers/route-params.js';
 
 const MAX_VALUES = 1_000;
+const MAX_INPUT_BYTES = 1_048_576;
 
 interface WorkItem {
   readonly component: InspectedComponent;
@@ -41,18 +46,24 @@ function normalizeScalar(value: string): { value: string; malformedEncoding: boo
 export function normalizeRequest(request: DetectionRequest): NormalizationResult {
   const values: NormalizedValue[] = [];
   const work: WorkItem[] = [{ component: 'route', path: '$route', value: request.route, depth: 0 }];
-  for (const [component, value] of [
-    ['query', request.query],
-    ['routeParams', request.routeParams],
-    ['body', request.body],
-  ] as const) {
-    if (value !== undefined) work.push({ component, path: '$', value, depth: 0 });
+  const parsed = [
+    ['query', queryParser.parse(request.query), 'query'],
+    ['routeParams', routeParamsParser.parse(request.routeParams), 'routeParams'],
+    ['body', jsonParser.parse(request.body), 'body'],
+  ] as const;
+  const parserErrors = parsed.flatMap(([, result]) => result.errors);
+  for (const [component, result] of parsed) {
+    if (result.value !== undefined) {
+      work.push({ component, path: '$', value: result.value, depth: 0 });
+    }
   }
 
   let nodes = 0;
   let truncated = false;
   let malformedEncoding = false;
   let limitsExceeded = false;
+  let inputBytes = 0;
+  const seen = new WeakSet<object>();
 
   while (work.length > 0) {
     const item = work.pop();
@@ -65,6 +76,11 @@ export function normalizeRequest(request: DetectionRequest): NormalizationResult
 
     const scalar = scalarToString(item.value);
     if (scalar !== undefined) {
+      inputBytes += Buffer.byteLength(scalar, 'utf8');
+      if (inputBytes > MAX_INPUT_BYTES) {
+        limitsExceeded = true;
+        break;
+      }
       const normalized = normalizeScalar(scalar);
       values.push({
         component: item.component,
@@ -78,6 +94,11 @@ export function normalizeRequest(request: DetectionRequest): NormalizationResult
     }
 
     if (item.value === null || typeof item.value !== 'object') continue;
+    if (seen.has(item.value)) {
+      limitsExceeded = true;
+      continue;
+    }
+    seen.add(item.value);
     if (item.depth >= MAX_INPUT_DEPTH) {
       limitsExceeded = true;
       continue;
@@ -116,5 +137,8 @@ export function normalizeRequest(request: DetectionRequest): NormalizationResult
     }
   }
 
-  return { values, truncated, malformedEncoding, limitsExceeded };
+  const parsedHeaders = headersParser.parse(request.headers);
+  parserErrors.push(...parsedHeaders.errors);
+  const headers = parsedHeaders.value ?? {};
+  return { values, truncated, malformedEncoding, limitsExceeded, headers, parserErrors };
 }

@@ -5,6 +5,8 @@ import type {
   RuleCategory,
   SecuritySeverity,
 } from '@ethioshield/security-contracts';
+import type { SanitizedHeaders } from './parsers/headers.js';
+import type { ParserError } from './parsers/types.js';
 
 export const MAX_INPUT_STRING_LENGTH = 16_384;
 export const MAX_INPUT_NODES = 1_000;
@@ -25,6 +27,7 @@ export interface DetectionRequest {
   readonly query?: unknown;
   readonly routeParams?: unknown;
   readonly body?: unknown;
+  readonly headers?: unknown;
 }
 
 export interface DetectionContext {
@@ -32,6 +35,7 @@ export interface DetectionContext {
   readonly request: DetectionRequest;
   readonly values: readonly NormalizedValue[];
   readonly budget: DetectionBudget;
+  readonly headers: SanitizedHeaders;
 }
 
 export type InspectedComponent = DetectionComponent;
@@ -48,6 +52,8 @@ export interface NormalizationResult {
   readonly truncated: boolean;
   readonly malformedEncoding: boolean;
   readonly limitsExceeded: boolean;
+  readonly headers: SanitizedHeaders;
+  readonly parserErrors: readonly ParserError[];
 }
 
 export interface DetectionFinding {
@@ -81,7 +87,7 @@ export interface DetectionPlugin {
 }
 
 export interface DetectionError {
-  readonly code: 'normalization_limit' | 'malformed_encoding' | 'detector_error';
+  readonly code: 'normalization_limit' | 'malformed_encoding' | 'parser_error' | 'detector_error';
   readonly message: string;
 }
 

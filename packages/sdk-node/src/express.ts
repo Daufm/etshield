@@ -316,6 +316,7 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
         query: request.query,
         routeParams: request.params,
         body: request.body,
+        headers: request.headers,
       });
     } catch {
       await this.reportError({ code: 'detection_error', message: 'Security inspection failed.' });
