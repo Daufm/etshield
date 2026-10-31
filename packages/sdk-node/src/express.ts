@@ -14,7 +14,7 @@ import {
   CURRENT_SCHEMA_VERSION,
 } from '@ethioshield/security-contracts';
 import { DetectionEngine } from './detection/engine.js';
-import type { DetectionResult } from './detection/types.js';
+import type { BodyInspectionState, DetectionResult } from './detection/types.js';
 import { evaluateDetection } from './detection/policy-evaluator.js';
 import { isHttpMethod } from '@ethioshield/security-contracts';
 import type { ChallengeAdapter } from './challenge.js';
@@ -146,6 +146,42 @@ function getClientIp(
   if (typeof forwarded !== 'string') return undefined;
   const first = forwarded.split(',')[0]?.trim();
   return first !== undefined && isIP(first) !== 0 ? first : undefined;
+}
+
+function getBodyInspectionState(request: Request): BodyInspectionState {
+  if (request.body !== undefined) return 'parsed';
+  const contentLength = request.headers['content-length'];
+  if (contentLength === '0') return 'absent';
+  const hasBodyHeaders =
+    (typeof contentLength === 'string' && contentLength.length > 0) ||
+    request.headers['transfer-encoding'] !== undefined ||
+    request.headers['content-type'] !== undefined;
+  if (!hasBodyHeaders) return 'absent';
+  if (request.readableEnded || request.complete) return 'unavailable';
+  return 'streaming';
+}
+
+function emptyDetectionResult(): DetectionResult {
+  return {
+    status: 'complete',
+    findings: [],
+    errors: [],
+    normalization: {
+      values: [],
+      truncated: false,
+      malformedEncoding: false,
+      limitsExceeded: false,
+      ambiguous: false,
+      headers: {},
+      parserErrors: [],
+    },
+    budget: {
+      cooperative: true,
+      elapsedMs: 0,
+      limitMs: 0,
+      exceeded: false,
+    },
+  };
 }
 
 function createDecision(
@@ -343,12 +379,42 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
         this.options.routeExclusions ?? [],
       )
     ) {
+      const detection = emptyDetectionResult();
+      const decision = createDecision(
+        'monitor',
+        this.options.policy,
+        'policy.route_exclusion',
+        'policy',
+        'route_excluded',
+        detection,
+      );
+      try {
+        const event = createEvent(
+          request,
+          this.options.projectId,
+          decision,
+          detection,
+          this.options.clock,
+          this.options.eventId,
+          this.options.trustedProxy,
+        );
+        assertSecurityEvent(event);
+        await this.runHook(decision, { event, detection, correlationId });
+        await this.emitTelemetry(event);
+      } catch {
+        await this.reportError({
+          code: 'exclusion_event_error',
+          message: 'Security exclusion decision could not be recorded.',
+        });
+      }
+      response.setHeader('x-ethioshield-action', decision.action);
       next();
       return;
     }
 
     let detection: DetectionResult;
     try {
+      const bodyState = getBodyInspectionState(request);
       detection = this.options.engine.inspect({
         method: request.method,
         route: request.path,
@@ -357,6 +423,7 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
         body: request.body,
         headers: request.headers,
         correlationId,
+        bodyState,
       });
     } catch {
       await this.reportError({ code: 'detection_error', message: 'Security inspection failed.' });

@@ -1,4 +1,5 @@
 import type { Detector, DetectorContext, DetectionFinding } from './types.js';
+import { splitPathSegments } from './detector-utils.js';
 
 const RULE_ID = 'input.path_traversal_indicator';
 const SENSITIVE_SEGMENTS = new Set(['etc', 'proc', 'windows']);
@@ -7,7 +8,7 @@ export const pathTraversalDetector: Detector = {
   ruleId: RULE_ID,
   detect(context: DetectorContext): readonly DetectionFinding[] {
     return context.values.flatMap((item) => {
-      const segments = item.value.split(/[\\/]+/u).filter((segment) => segment.length > 0);
+      const segments = splitPathSegments(item.value);
       const hasParent = segments.includes('..');
       const hasSensitiveRoot = segments.some((segment) => SENSITIVE_SEGMENTS.has(segment));
       if (!hasParent && !hasSensitiveRoot) return [];

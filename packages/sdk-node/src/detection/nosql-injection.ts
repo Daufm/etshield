@@ -1,25 +1,14 @@
 import type { Detector, DetectorContext, DetectionFinding } from './types.js';
+import { parseNoSqlOperator } from './detector-utils.js';
 
 const RULE_ID = 'input.nosql_injection_indicator';
-const OPERATORS = new Set([
-  '$where',
-  '$ne',
-  '$gt',
-  '$gte',
-  '$lt',
-  '$lte',
-  '$in',
-  '$nin',
-  '$regex',
-  '$expr',
-]);
 
 export const nosqlInjectionDetector: Detector = {
   ruleId: RULE_ID,
   detect(context: DetectorContext): readonly DetectionFinding[] {
     return context.values.flatMap((item) => {
-      const operator = item.value.split(/\s/u, 1)[0] ?? '';
-      if (!OPERATORS.has(operator)) return [];
+      const operator = parseNoSqlOperator(item.value);
+      if (operator === undefined) return [];
       const reasonCode =
         operator === '$where' || operator === '$expr'
           ? 'nosql_script_operator'

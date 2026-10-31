@@ -31,3 +31,26 @@ export interface DetectionBudget {
   readonly maxFindings: number;
   readonly maxDurationMs: number;
 }
+
+export type DetectionInspectionStatus = 'complete' | 'error' | 'inconclusive';
+export type DetectionInspectionErrorCode =
+  | 'normalization_limit'
+  | 'malformed_encoding'
+  | 'parser_error'
+  | 'detector_error'
+  | 'budget_exceeded'
+  | 'invalid_finding'
+  | 'body_unavailable'
+  | 'ambiguous_representation';
+
+export interface DetectionInspectionError {
+  readonly code: DetectionInspectionErrorCode;
+  readonly message: string;
+}
+
+export interface DetectionBudgetOutcome {
+  readonly cooperative: true;
+  readonly elapsedMs: number;
+  readonly limitMs: number;
+  readonly exceeded: boolean;
+}

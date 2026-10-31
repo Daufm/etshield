@@ -14,12 +14,18 @@ import type { EthioShieldExpressOptions } from './express.js';
 export { DetectionEngine, defaultDetectors } from './detection/engine.js';
 export type {
   DetectionContext,
+  DetectionBudgetOutcome,
+  BodyInspectionState,
   DetectionError,
   DetectionFinding,
   DetectionPlugin,
   DetectionRequest,
   DetectionResult,
 } from './detection/types.js';
+export type {
+  DetectionInspectionErrorCode,
+  DetectionInspectionStatus,
+} from '@ethioshield/security-contracts';
 export type { Detector } from './detection/types.js';
 export { asDetectionPlugin, isDetectionPlugin } from './detection/plugin.js';
 export { evaluateDetection } from './detection/policy-evaluator.js';
@@ -61,6 +67,14 @@ export type {
   OutboundHttpObservation,
   SqlObservation,
 } from './instrumentation.js';
+export { correlateSinkObservation } from './detection/sink-correlation.js';
+export type {
+  CorrelatedFinding,
+  ExploitabilityStatus,
+  SinkCorrelationResult,
+  SinkKind,
+  SinkObservation,
+} from './detection/sink-correlation.js';
 export { InMemoryCorrelationStore, StatefulCorrelator } from './correlation.js';
 export type {
   CorrelationOptions,

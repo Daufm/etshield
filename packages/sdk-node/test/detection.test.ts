@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DetectionEngine } from '../src/index.js';
 import type { DetectionPlugin, Detector } from '../src/detection/types.js';
+import { DEFAULT_DETECTION_BUDGET } from '../src/detection/types.js';
 
 const engine = new DetectionEngine();
 
@@ -166,6 +167,70 @@ describe('DetectionEngine', () => {
     });
   });
 
+  it('rejects invalid plugin findings without treating them as detections', () => {
+    const result = new DetectionEngine([
+      {
+        id: 'test.invalid',
+        version: '1.0',
+        categories: ['input'],
+        inspect: () => [
+          {
+            ruleId: 'test.invalid',
+            category: 'input',
+            severity: 'high',
+            confidence: 2,
+            component: 'query',
+            path: '$.value',
+            reasonCode: 'invalid_confidence',
+          },
+        ],
+      },
+    ]).inspect({
+      method: 'GET',
+      route: '/invalid',
+      query: { value: 'test' },
+    });
+
+    expect(result.status).toBe('error');
+    expect(result.findings).toEqual([]);
+    expect(result.errors).toContainEqual({
+      code: 'invalid_finding',
+      message: 'Detector test.invalid returned an invalid finding.',
+    });
+  });
+
+  it('reports cooperative budget exhaustion as inconclusive', () => {
+    let now = 0;
+    const result = new DetectionEngine(
+      [
+        {
+          id: 'test.budget',
+          version: '1.0',
+          categories: ['input'],
+          inspect: () => [],
+        },
+      ],
+      {
+        budget: { ...DEFAULT_DETECTION_BUDGET, maxDurationMs: 5 },
+        now: () => {
+          now += 10;
+          return now;
+        },
+      },
+    ).inspect({ method: 'GET', route: '/budget' });
+
+    expect(result.status).toBe('inconclusive');
+    expect(result.budget).toMatchObject({
+      cooperative: true,
+      limitMs: 5,
+      exceeded: true,
+    });
+    expect(result.errors).toContainEqual({
+      code: 'budget_exceeded',
+      message: 'Cooperative inspection time budget was exceeded.',
+    });
+  });
+
   it('returns structured confidence bands and deduplicates equivalent evidence', () => {
     const result = engine.inspect({
       method: 'POST',
@@ -210,6 +275,26 @@ describe('DetectionEngine', () => {
       'input.sql_injection_indicator',
       'input.xss_indicator',
       'input.path_traversal_indicator',
+    ]);
+  });
+
+  it('uses bounded structured adapters for variants without decoding context-specific syntax', () => {
+    const result = engine.inspect({
+      method: 'POST',
+      route: '/submit',
+      query: {
+        sql: 'UN/**/ION SELECT id FROM users WHERE name="Ada"',
+        markup: '<IMG OnError = "alert(1)">',
+        path: '..\\..\\Windows\\system32',
+      },
+      body: { filter: { $where: 'this.value > 1' } },
+    });
+
+    expect(result.findings.map((finding) => finding.reasonCode)).toEqual([
+      'sql_keyword_sequence',
+      'nosql_script_operator',
+      'executable_markup_attribute',
+      'parent_path_segment',
     ]);
   });
 });

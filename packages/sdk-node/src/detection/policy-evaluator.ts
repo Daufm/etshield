@@ -38,7 +38,7 @@ export function evaluateDetection(
   },
 ): PolicyEvaluation {
   const enforcementMode = options?.enforcementMode ?? policy.enforcementMode;
-  if (detection.status === 'error') {
+  if (detection.status !== 'complete') {
     const action = applyEnforcementMode(
       options?.fallbackAction ?? (enforcementMode === 'enforce' ? 'block' : 'monitor'),
       enforcementMode,

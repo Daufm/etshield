@@ -1,4 +1,5 @@
 import type { Detector, DetectorContext, DetectionFinding } from './types.js';
+import { parseSqlInput } from './detector-utils.js';
 
 const RULE_ID = 'input.sql_injection_indicator';
 const KEYWORDS = new Set([
@@ -21,43 +22,13 @@ const KEYWORDS = new Set([
   'false',
 ]);
 
-function tokens(value: string): string[] {
-  const result: string[] = [];
-  let token = '';
-  for (const character of value) {
-    if (/[a-z0-9_]/.test(character)) {
-      token += character;
-    } else if (token.length > 0) {
-      result.push(token);
-      token = '';
-    }
-  }
-  if (token.length > 0) result.push(token);
-  return result;
-}
-
-function removeComments(value: string): string {
-  let result = '';
-  let index = 0;
-  while (index < value.length) {
-    if (value[index] === '/' && value[index + 1] === '*') {
-      const end = value.indexOf('*/', index + 2);
-      index = end < 0 ? value.length : end + 2;
-      continue;
-    }
-    result += value[index] ?? '';
-    index += 1;
-  }
-  return result;
-}
-
 function hasSequence(words: readonly string[], first: string, second: string): boolean {
   return words.some((word, index) => word === first && words[index + 1] === second);
 }
 
 function isSqlIndicator(value: string): string | undefined {
-  const parsedValue = removeComments(value);
-  const words = tokens(parsedValue);
+  const parsed = parseSqlInput(value);
+  const words = parsed.tokens;
   if (words.some((word) => !KEYWORDS.has(word) && word.length > 128)) return undefined;
   if (
     hasSequence(words, 'union', 'select') ||
@@ -70,13 +41,10 @@ function isSqlIndicator(value: string): string | undefined {
   ) {
     return 'sql_keyword_sequence';
   }
-  if (
-    (words.includes('or') || words.includes('and')) &&
-    /['"][^'"]*['"]?\s*=\s*['"]?[^'"]+['"]?/u.test(parsedValue)
-  ) {
+  if ((words.includes('or') || words.includes('and')) && parsed.hasQuotedEquality) {
     return 'sql_boolean_expression';
   }
-  if ((words.includes('sleep') || words.includes('benchmark')) && parsedValue.includes('(')) {
+  if ((words.includes('sleep') || words.includes('benchmark')) && parsed.hasCallSyntax) {
     return 'sql_timing_function';
   }
   return undefined;

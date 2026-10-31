@@ -34,9 +34,16 @@ function detection(
       values: [],
       truncated: false,
       malformedEncoding: false,
+      ambiguous: false,
       limitsExceeded: false,
       headers: {},
       parserErrors: [],
+    },
+    budget: {
+      cooperative: true,
+      elapsedMs: 0,
+      limitMs: 25,
+      exceeded: false,
     },
   };
 }
@@ -138,6 +145,13 @@ describe('evaluateDetection', () => {
     expect(evaluateDetection(policy, detection('error')).action).toBe('block');
     expect(
       evaluateDetection(policy, detection('error'), { enforcementMode: 'monitor' }).action,
+    ).toBe('monitor');
+  });
+
+  it('returns a fail-safe action for inconclusive inspections', () => {
+    expect(evaluateDetection(policy, detection('inconclusive')).action).toBe('block');
+    expect(
+      evaluateDetection(policy, detection('inconclusive'), { enforcementMode: 'monitor' }).action,
     ).toBe('monitor');
   });
 

@@ -18,6 +18,9 @@ export class InMemoryAtomicCounterStore implements AtomicCounterStore {
   }
 
   public async increment(key: string, windowSeconds: number, now: number): Promise<CounterResult> {
+    for (const [counterKey, counter] of this.counters) {
+      if (counter.resetAt <= now) this.counters.delete(counterKey);
+    }
     const resetAt = now + windowSeconds * 1_000;
     const current = this.counters.get(key);
     if (current === undefined || current.resetAt <= now) {

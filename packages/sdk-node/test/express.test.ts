@@ -98,7 +98,7 @@ describe('EthioShield Express middleware', () => {
     await shield.close();
   });
 
-  it('does not inspect a body before an upstream parser has populated it', async () => {
+  it('fails closed when a relevant body is unavailable before an upstream parser', async () => {
     const onDecision = vi.fn();
     const shield = new EthioShield({
       projectId: 'project_test',
@@ -111,9 +111,33 @@ describe('EthioShield Express middleware', () => {
       search: 'UNION SELECT username FROM users',
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     expect(onDecision).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'allow' }),
+      expect.objectContaining({ action: 'block' }),
+      expect.any(Object),
+    );
+    await shield.close();
+  });
+
+  it('continues in monitor mode with a non-clean decision when a body is unavailable', async () => {
+    const onDecision = vi.fn();
+    const shield = new EthioShield({
+      projectId: 'project_test',
+      policy: policy(),
+      onDecision,
+    });
+
+    const response = await request(appWith(shield, false)).post('/search').send({
+      search: 'UNION SELECT username FROM users',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['x-ethioshield-action']).toBe('monitor');
+    expect(onDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'monitor',
+        reason: expect.objectContaining({ code: 'inspection_failed' }),
+      }),
       expect.any(Object),
     );
     await shield.close();
@@ -214,7 +238,14 @@ describe('EthioShield Express middleware', () => {
       .set('x-forwarded-for', '203.0.113.10');
 
     expect(response.status).toBe(200);
-    expect(events).toHaveLength(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      decision: {
+        action: 'monitor',
+        ruleId: 'policy.route_exclusion',
+        reason: { code: 'route_excluded' },
+      },
+    });
     await shield.close();
   });
 

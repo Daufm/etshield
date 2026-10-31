@@ -129,4 +129,55 @@ describe('parser adapters', () => {
     expect(parsed.value).toBe(params);
     expect(params).toEqual({ id: '42' });
   });
+
+  it('records bounded canonicalization provenance without exposing it in events', () => {
+    const result = new DetectionEngine().inspect({
+      method: 'GET',
+      route: '/files/:name',
+      query: { name: '%2e%2e%2fetc%2fpasswd' },
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.normalization.values[0]).toMatchObject({
+      raw: '%2e%2e%2fetc%2fpasswd',
+      value: '../etc/passwd',
+      decodeDepth: 1,
+      transformations: ['percent_decode', 'unicode_nfkc', 'case_fold'],
+      parserId: 'query',
+      parserVersion: '1.0',
+      duplicateStatus: 'unknown',
+      ambiguous: false,
+    });
+    expect(result.findings[0]?.provenance).toMatchObject({
+      parserId: 'query',
+      decodeDepth: 1,
+    });
+  });
+
+  it('reports a second decode candidate as ambiguous instead of clean', () => {
+    const result = new DetectionEngine().inspect({
+      method: 'GET',
+      route: '/files',
+      query: { name: '%252e%252e%252fetc%252fpasswd' },
+    });
+
+    expect(result.status).toBe('error');
+    expect(result.errors).toContainEqual({
+      code: 'ambiguous_representation',
+      message: 'Request values contained an ambiguous encoded representation.',
+    });
+    expect(result.normalization.values[0]?.raw).toBe('%252e%252e%252fetc%252fpasswd');
+  });
+
+  it('marks repeated query values as duplicate input', () => {
+    const result = new DetectionEngine().inspect({
+      method: 'GET',
+      route: '/search',
+      query: { tag: ['one', 'two'] },
+    });
+
+    expect(result.normalization.values.filter((value) => value.path.includes('['))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ duplicateStatus: 'present' })]),
+    );
+  });
 });

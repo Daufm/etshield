@@ -7,6 +7,7 @@ import type {
   RateLimitRequest,
 } from './types.js';
 import { InMemoryAtomicCounterStore } from './store.js';
+import { encodeCounterKey } from './key.js';
 
 function boundedIdentifier(value: string | undefined): string | undefined {
   return value !== undefined && value.length > 0 && value.length <= 128 ? value : undefined;
@@ -59,7 +60,10 @@ export class LayeredRateLimiter {
       if (!matchesRule(rule, request)) continue;
       const keyTypes = rule.keyTypes.filter((type) => keyValue(type, request) !== undefined);
       if (keyTypes.length === 0) continue;
-      const key = `${rule.ruleId}:${keyTypes.map((type) => `${type}=${keyValue(type, request)}`).join('|')}`;
+      const key = encodeCounterKey(
+        rule.ruleId,
+        keyTypes.map((type) => [type, keyValue(type, request) ?? '']),
+      );
       try {
         const counter = await this.store.increment(key, rule.windowSeconds, now);
         const exceeded = counter.count > rule.maxRequests;

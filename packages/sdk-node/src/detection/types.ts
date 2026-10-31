@@ -1,12 +1,16 @@
 import type {
   DetectionBudget,
+  DetectionBudgetOutcome,
   DetectionComponent,
+  DetectionInspectionErrorCode,
+  DetectionInspectionStatus,
   DetectionReference,
   RuleCategory,
   SecuritySeverity,
 } from '@ethioshield/security-contracts';
 import type { SanitizedHeaders } from './parsers/headers.js';
 import type { ParserError } from './parsers/types.js';
+export type { DetectionBudgetOutcome } from '@ethioshield/security-contracts';
 
 export const MAX_INPUT_STRING_LENGTH = 16_384;
 export const MAX_INPUT_NODES = 1_000;
@@ -29,7 +33,10 @@ export interface DetectionRequest {
   readonly body?: unknown;
   readonly headers?: unknown;
   readonly correlationId?: string;
+  readonly bodyState?: BodyInspectionState;
 }
+
+export type BodyInspectionState = 'absent' | 'parsed' | 'malformed' | 'unavailable' | 'streaming';
 
 export interface DetectionContext {
   readonly contractVersion: '1.0';
@@ -45,14 +52,25 @@ export type InspectedComponent = DetectionComponent;
 export interface NormalizedValue {
   readonly component: InspectedComponent;
   readonly path: string;
+  readonly raw: string;
   readonly value: string;
   readonly malformedEncoding: boolean;
+  readonly decodeDepth: number;
+  readonly transformations: readonly NormalizationTransformation[];
+  readonly parserId: string;
+  readonly parserVersion: string;
+  readonly duplicateStatus: 'none' | 'present' | 'unknown';
+  readonly truncated: boolean;
+  readonly ambiguous: boolean;
 }
+
+export type NormalizationTransformation = 'percent_decode' | 'unicode_nfkc' | 'case_fold';
 
 export interface NormalizationResult {
   readonly values: readonly NormalizedValue[];
   readonly truncated: boolean;
   readonly malformedEncoding: boolean;
+  readonly ambiguous: boolean;
   readonly limitsExceeded: boolean;
   readonly headers: SanitizedHeaders;
   readonly parserErrors: readonly ParserError[];
@@ -69,7 +87,19 @@ export interface DetectionFinding {
   readonly reasonCode: string;
   readonly evidenceId?: string;
   readonly references?: readonly DetectionReference[];
+  readonly provenance?: NormalizedValueProvenance;
 }
+
+export type NormalizedValueProvenance = Pick<
+  NormalizedValue,
+  | 'decodeDepth'
+  | 'transformations'
+  | 'parserId'
+  | 'parserVersion'
+  | 'duplicateStatus'
+  | 'truncated'
+  | 'ambiguous'
+>;
 
 export interface DetectorContext {
   readonly values: readonly NormalizedValue[];
@@ -90,13 +120,15 @@ export interface DetectionPlugin {
 }
 
 export interface DetectionError {
-  readonly code: 'normalization_limit' | 'malformed_encoding' | 'parser_error' | 'detector_error';
+  readonly code: DetectionInspectionErrorCode;
   readonly message: string;
 }
 
 export interface DetectionResult {
-  readonly status: 'complete' | 'error';
+  readonly status: DetectionInspectionStatus;
   readonly findings: readonly DetectionFinding[];
   readonly errors: readonly DetectionError[];
   readonly normalization: NormalizationResult;
+  readonly budget: DetectionBudgetOutcome;
+  readonly correlationId?: string;
 }

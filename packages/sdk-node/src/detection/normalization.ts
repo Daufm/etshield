@@ -38,9 +38,25 @@ function normalizeScalar(value: string): { value: string; malformedEncoding: boo
     malformedEncoding = /%[0-9a-f]{0,2}$/i.test(bounded) || /%/i.test(bounded);
   }
   return {
-    value: decoded.normalize('NFKC').toLocaleLowerCase(),
+    value: decoded.normalize('NFKC').toLowerCase(),
     malformedEncoding,
   };
+}
+
+function parserFor(component: InspectedComponent): {
+  readonly id: string;
+  readonly version: string;
+} {
+  switch (component) {
+    case 'route':
+      return { id: 'route', version: '1.0' };
+    case 'query':
+      return { id: queryParser.id, version: '1.0' };
+    case 'routeParams':
+      return { id: routeParamsParser.id, version: '1.0' };
+    case 'body':
+      return { id: jsonParser.id, version: '1.0' };
+  }
 }
 
 export function normalizeRequest(request: DetectionRequest): NormalizationResult {
@@ -61,6 +77,7 @@ export function normalizeRequest(request: DetectionRequest): NormalizationResult
   let nodes = 0;
   let truncated = false;
   let malformedEncoding = false;
+  let ambiguous = false;
   let limitsExceeded = false;
   let inputBytes = 0;
   const seen = new WeakSet<object>();
@@ -82,14 +99,35 @@ export function normalizeRequest(request: DetectionRequest): NormalizationResult
         break;
       }
       const normalized = normalizeScalar(scalar);
+      const bounded = scalar.slice(0, MAX_INPUT_STRING_LENGTH);
+      const decodedOnce = (() => {
+        try {
+          return decodeURIComponent(bounded);
+        } catch {
+          return bounded;
+        }
+      })();
+      const hasSecondDecodeCandidate = /%[0-9a-f]{2}/iu.test(decodedOnce);
+      const parser = parserFor(item.component);
+      const duplicateStatus =
+        item.component === 'query' && item.path.includes('[') ? 'present' : 'unknown';
       values.push({
         component: item.component,
         path: item.path.slice(0, 256),
+        raw: bounded,
         value: normalized.value,
         malformedEncoding: normalized.malformedEncoding,
+        decodeDepth: 1,
+        transformations: ['percent_decode', 'unicode_nfkc', 'case_fold'],
+        parserId: parser.id,
+        parserVersion: parser.version,
+        duplicateStatus,
+        truncated: scalar.length > MAX_INPUT_STRING_LENGTH,
+        ambiguous: hasSecondDecodeCandidate,
       });
       malformedEncoding ||= normalized.malformedEncoding;
       truncated ||= scalar.length > MAX_INPUT_STRING_LENGTH;
+      ambiguous ||= hasSecondDecodeCandidate;
       continue;
     }
 
@@ -140,5 +178,5 @@ export function normalizeRequest(request: DetectionRequest): NormalizationResult
   const parsedHeaders = headersParser.parse(request.headers);
   parserErrors.push(...parsedHeaders.errors);
   const headers = parsedHeaders.value ?? {};
-  return { values, truncated, malformedEncoding, limitsExceeded, headers, parserErrors };
+  return { values, truncated, malformedEncoding, limitsExceeded, ambiguous, headers, parserErrors };
 }

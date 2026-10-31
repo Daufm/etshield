@@ -4,6 +4,7 @@ import type {
   SecurityAction,
 } from '@ethioshield/security-contracts';
 import type { AtomicCounterStore, CounterResult, RateLimitIdentity } from './rate-limit/types.js';
+import { encodeCounterKey } from './rate-limit/key.js';
 
 export interface CorrelationStore {
   increment(key: string, windowSeconds: number, now: number): Promise<CounterResult>;
@@ -49,6 +50,9 @@ export class InMemoryCorrelationStore implements CorrelationStore {
   }
 
   public async increment(key: string, windowSeconds: number, now: number): Promise<CounterResult> {
+    for (const [entryKey, entry] of this.entries) {
+      if (entry.resetAt <= now) this.entries.delete(entryKey);
+    }
     const resetAt = now + windowSeconds * 1_000;
     const current = this.entries.get(key);
     if (current === undefined || current.resetAt <= now) {
@@ -117,9 +121,10 @@ export class StatefulCorrelator {
         (dimension) => valueForDimension(dimension, request) !== undefined,
       );
       if (dimensions.length !== rule.dimensions.length) continue;
-      const key = `${rule.ruleId}:${dimensions
-        .map((dimension) => `${dimension}=${valueForDimension(dimension, request)}`)
-        .join('|')}`;
+      const key = encodeCounterKey(
+        rule.ruleId,
+        dimensions.map((dimension) => [dimension, valueForDimension(dimension, request) ?? '']),
+      );
       try {
         const counter = await this.store.increment(key, rule.windowSeconds, now);
         if (counter.count > rule.maxEvents) {
