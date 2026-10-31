@@ -165,4 +165,51 @@ describe('DetectionEngine', () => {
       reasonCode: 'plugin_ran',
     });
   });
+
+  it('returns structured confidence bands and deduplicates equivalent evidence', () => {
+    const result = engine.inspect({
+      method: 'POST',
+      route: '/search',
+      body: { filter: { $ne: 'x' } },
+    });
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toMatchObject({
+      ruleId: 'input.nosql_injection_indicator',
+      confidenceBand: 'high',
+      evidenceId: expect.stringContaining('input.nosql_injection_indicator'),
+    });
+  });
+
+  it('uses structured parsing to avoid broad detector false positives', () => {
+    const result = engine.inspect({
+      method: 'POST',
+      route: '/content',
+      body: {
+        description: 'Use the union jack design and select a size.',
+        html: '<strong>Safe</strong>',
+        file: 'windowsill.txt',
+      },
+    });
+
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it('recognizes token, scheme, and path-segment indicators', () => {
+    const result = engine.inspect({
+      method: 'POST',
+      route: '/upload',
+      query: {
+        sql: 'UN/**/ION SELECT id FROM users',
+        script: 'java%73cript:alert(1)',
+        path: '..%2f..%2fetc%2fpasswd',
+      },
+    });
+
+    expect(result.findings.map((finding) => finding.ruleId)).toEqual([
+      'input.sql_injection_indicator',
+      'input.xss_indicator',
+      'input.path_traversal_indicator',
+    ]);
+  });
 });

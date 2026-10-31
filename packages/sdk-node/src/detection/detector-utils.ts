@@ -18,9 +18,11 @@ export function findMatches(
       category,
       severity,
       confidence,
+      confidenceBand: confidence >= 0.85 ? 'high' : confidence >= 0.6 ? 'medium' : 'low',
       component: value.component,
       path: value.path,
       reasonCode,
+      evidenceId: `${ruleId}:${value.component}:${value.path}:${reasonCode}`,
     });
   }
   return findings;
@@ -43,9 +45,11 @@ export function findMatchesAcrossComponents(
       category,
       severity,
       confidence,
+      confidenceBand: confidence >= 0.85 ? 'high' : confidence >= 0.6 ? 'medium' : 'low',
       component: value.component,
       path: value.path,
       reasonCode,
+      evidenceId: `${ruleId}:${value.component}:${value.path}:${reasonCode}`,
     });
   }
   return findings;

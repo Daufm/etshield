@@ -61,6 +61,7 @@ export interface DetectionFinding {
   readonly category: RuleCategory;
   readonly severity: SecuritySeverity;
   readonly confidence: number;
+  readonly confidenceBand?: 'low' | 'medium' | 'high';
   readonly component: InspectedComponent;
   readonly path: string;
   readonly reasonCode: string;

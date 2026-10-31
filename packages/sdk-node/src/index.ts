@@ -22,6 +22,8 @@ export type {
 } from './detection/types.js';
 export type { Detector } from './detection/types.js';
 export { asDetectionPlugin, isDetectionPlugin } from './detection/plugin.js';
+export { evaluateDetection } from './detection/policy-evaluator.js';
+export type { PolicyEvaluation } from './detection/policy-evaluator.js';
 export {
   headersParser,
   jsonParser,

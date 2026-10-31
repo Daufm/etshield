@@ -47,17 +47,23 @@ export class DetectionEngine {
     }
 
     const findings = [];
+    const evidenceIds = new Set<string>();
     for (const detector of this.detectors) {
       try {
-        findings.push(
-          ...detector.inspect({
-            contractVersion: '1.0',
-            request,
-            values: normalization.values,
-            budget,
-            headers: normalization.headers,
-          }),
-        );
+        for (const finding of detector.inspect({
+          contractVersion: '1.0',
+          request,
+          values: normalization.values,
+          budget,
+          headers: normalization.headers,
+        })) {
+          const evidenceId =
+            finding.evidenceId ??
+            `${finding.ruleId}:${finding.component}:${finding.path}:${finding.reasonCode}`;
+          if (evidenceIds.has(evidenceId)) continue;
+          evidenceIds.add(evidenceId);
+          findings.push({ ...finding, evidenceId });
+        }
       } catch {
         errors.push({
           code: 'detector_error' as const,

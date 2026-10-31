@@ -1,20 +1,42 @@
 import type { Detector, DetectorContext, DetectionFinding } from './types.js';
-import { findMatchesAcrossComponents } from './detector-utils.js';
 
-const NOSQL_INDICATORS =
-  /(?:\$where\b|\$ne\b|\$gt\b|\$gte\b|\$lt\b|\$lte\b|\$in\b|\$nin\b|\$regex\b|\$expr\b)/i;
+const RULE_ID = 'input.nosql_injection_indicator';
+const OPERATORS = new Set([
+  '$where',
+  '$ne',
+  '$gt',
+  '$gte',
+  '$lt',
+  '$lte',
+  '$in',
+  '$nin',
+  '$regex',
+  '$expr',
+]);
 
 export const nosqlInjectionDetector: Detector = {
-  ruleId: 'input.nosql_injection_indicator',
+  ruleId: RULE_ID,
   detect(context: DetectorContext): readonly DetectionFinding[] {
-    return findMatchesAcrossComponents(
-      context,
-      NOSQL_INDICATORS,
-      'input.nosql_injection_indicator',
-      'input',
-      'high',
-      0.84,
-      'nosql_operator_or_script_indicator',
-    );
+    return context.values.flatMap((item) => {
+      const operator = item.value.split(/\s/u, 1)[0] ?? '';
+      if (!OPERATORS.has(operator)) return [];
+      const reasonCode =
+        operator === '$where' || operator === '$expr'
+          ? 'nosql_script_operator'
+          : 'nosql_query_operator';
+      return [
+        {
+          ruleId: RULE_ID,
+          category: 'input' as const,
+          severity: 'high' as const,
+          confidence: operator === '$where' || operator === '$expr' ? 0.9 : 0.84,
+          confidenceBand: 'high' as const,
+          component: item.component,
+          path: item.path,
+          reasonCode,
+          evidenceId: `${RULE_ID}:${item.component}:${item.path}:${reasonCode}`,
+        },
+      ];
+    });
   },
 };

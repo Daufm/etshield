@@ -15,6 +15,7 @@ import {
 } from '@ethioshield/security-contracts';
 import { DetectionEngine } from './detection/engine.js';
 import type { DetectionResult } from './detection/types.js';
+import { evaluateDetection } from './detection/policy-evaluator.js';
 import { isHttpMethod } from '@ethioshield/security-contracts';
 import type { ChallengeAdapter } from './challenge.js';
 import { resolveNetworkRisk, type NetworkIntelligenceResolver } from './network-intelligence.js';
@@ -141,8 +142,8 @@ function createDecision(
   category: SecurityDecision['category'],
   reasonCode: string,
   detection: DetectionResult,
+  finding?: DetectionResult['findings'][number],
 ): SecurityDecision {
-  const finding = detection.findings[0];
   const decision: SecurityDecision = {
     action,
     ruleId,
@@ -362,8 +363,6 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
         })
       : undefined;
     const failed = detection.status === 'error';
-    const hasFindings = detection.findings.length > 0;
-    const firstFinding = detection.findings[0];
     if (failed) {
       await this.reportError({
         code: 'detection_error',
@@ -371,39 +370,27 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       });
     }
     const rateLimited = rateLimit !== undefined && rateLimit.action !== 'allow';
-    const action: SecurityAction = failed
-      ? this.options.mode === 'block'
-        ? 'block'
-        : 'monitor'
-      : rateLimited
-        ? rateLimit.action
-        : hasFindings
-          ? this.options.mode === 'block'
-            ? 'block'
-            : 'monitor'
-          : 'allow';
+    const policyEvaluation = evaluateDetection(this.options.policy, detection, {
+      enforcementMode: this.options.mode === 'block' ? 'enforce' : 'monitor',
+      fallbackAction: this.options.mode === 'block' ? 'block' : 'monitor',
+    });
+    const action: SecurityAction = rateLimited ? rateLimit.action : policyEvaluation.action;
+    const hasFindings = detection.findings.length > 0;
     const blocked = action === 'block';
     const throttled = action === 'throttle';
     const challenged = action === 'challenge';
     const decision = createDecision(
       action,
       this.options.policy,
-      failed
-        ? 'inspection.failure'
-        : rateLimited
-          ? rateLimit.ruleId
-          : (firstFinding?.ruleId ?? 'policy.allow'),
-      failed ? 'policy' : rateLimited ? 'rate_limit' : (firstFinding?.category ?? 'policy'),
-      failed
-        ? 'inspection_failed'
-        : rateLimited
-          ? rateLimit.storeError
-            ? 'rate_limit_store_unavailable'
-            : 'rate_limit_exceeded'
-          : hasFindings
-            ? 'indicator_detected'
-            : 'no_indicator_detected',
+      rateLimited ? rateLimit.ruleId : policyEvaluation.ruleId,
+      rateLimited ? 'rate_limit' : policyEvaluation.category,
+      rateLimited
+        ? rateLimit.storeError
+          ? 'rate_limit_store_unavailable'
+          : 'rate_limit_exceeded'
+        : policyEvaluation.reasonCode,
       detection,
+      rateLimited ? detection.findings[0] : policyEvaluation.finding,
     );
 
     let event: SecurityEvent;

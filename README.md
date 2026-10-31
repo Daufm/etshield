@@ -71,6 +71,24 @@ Header parsing exposes only bounded `user-agent`, `accept-language`, and
 `content-type` values to plugins and excludes credentials and forwarding
 headers.
 
+The detectors use bounded structured parsing as their primary signal:
+SQL indicators are tokenized with bounded comment handling, NoSQL indicators
+inspect operator-shaped values, XSS indicators scan HTML-like tags and
+dangerous schemes, and path traversal inspects normalized path segments.
+Regexes remain supplementary heuristics where used. Findings are deduplicated
+by stable evidence identifiers and include a qualitative confidence band;
+confidence is not a calibrated probability. These request indicators cannot
+prove exploitability without application or runtime sink context.
+
+Detection output is evaluated separately from enforcement by the versioned
+policy evaluator. Enabled rule settings select the action and optional
+confidence threshold; disabled or below-threshold findings are ignored.
+`monitor` enforcement downgrades block, throttle, and challenge actions to
+monitor. Inspection errors produce a fail-safe block under enforcing policy
+and monitor under monitor policy. The Express SDK remains monitor-by-default;
+passing `mode: 'block'` explicitly enables enforcing behavior for middleware.
+Challenge decisions still require a host-provided challenge adapter.
+
 ## Express integration
 
 The SDK supports Express 5.x. Mount `express.json()` or another bounded,

@@ -1,20 +1,30 @@
 import type { Detector, DetectorContext, DetectionFinding } from './types.js';
-import { findMatchesAcrossComponents } from './detector-utils.js';
 
-const PATH_TRAVERSAL_INDICATORS =
-  /(?:^|[\\/])\.\.(?:[\\/]|$)|(?:^|[\\/])(?:etc|proc|windows)(?:[\\/]|$)/i;
+const RULE_ID = 'input.path_traversal_indicator';
+const SENSITIVE_SEGMENTS = new Set(['etc', 'proc', 'windows']);
 
 export const pathTraversalDetector: Detector = {
-  ruleId: 'input.path_traversal_indicator',
+  ruleId: RULE_ID,
   detect(context: DetectorContext): readonly DetectionFinding[] {
-    return findMatchesAcrossComponents(
-      context,
-      PATH_TRAVERSAL_INDICATORS,
-      'input.path_traversal_indicator',
-      'input',
-      'high',
-      0.9,
-      'parent_path_or_sensitive_system_path',
-    );
+    return context.values.flatMap((item) => {
+      const segments = item.value.split(/[\\/]+/u).filter((segment) => segment.length > 0);
+      const hasParent = segments.includes('..');
+      const hasSensitiveRoot = segments.some((segment) => SENSITIVE_SEGMENTS.has(segment));
+      if (!hasParent && !hasSensitiveRoot) return [];
+      const reasonCode = hasParent ? 'parent_path_segment' : 'sensitive_system_path_segment';
+      return [
+        {
+          ruleId: RULE_ID,
+          category: 'input' as const,
+          severity: 'high' as const,
+          confidence: hasParent ? 0.94 : 0.9,
+          confidenceBand: 'high' as const,
+          component: item.component,
+          path: item.path,
+          reasonCode,
+          evidenceId: `${RULE_ID}:${item.component}:${item.path}:${reasonCode}`,
+        },
+      ];
+    });
   },
 };
