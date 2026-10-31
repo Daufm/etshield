@@ -18,13 +18,19 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:exports": "npm run build && node --test scripts/package-exports.test.mjs",
+    "check:artifacts": "npm run build && node scripts/check-artifacts.mjs",
+    "audit:production": "npm audit --omit=dev --audit-level=high",
+    "audit:full": "npm audit --audit-level=high",
     "typecheck": "tsc -b",
-    "validate": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:integration && npm run build"
+    "validate": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:coverage && npm run test:integration && npm run build && npm run test:exports && npm run check:artifacts && npm run audit:production"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
     "@types/node": "22.19.1",
+    "@vitest/coverage-v8": "3.2.4",
     "eslint": "9.39.1",
     "eslint-config-prettier": "10.1.8",
     "express": "5.1.0",

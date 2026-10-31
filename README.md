@@ -163,6 +163,48 @@ The MVP does not include a paid intelligence provider, ASN database, cloud
 counter service, dashboard, billing, or persistent device fingerprinting.
 Future work may add those behind explicit approvals and privacy review.
 
+## Operational hardening and release guidance
+
+Coverage is measured with the pinned Vitest V8 provider:
+
+```bash
+npm run test:coverage
+```
+
+The configured minimums are 70% for statements, lines, and functions, and 60%
+for branches. Coverage is a signal for test completeness, not a security
+guarantee; adversarial and integration tests remain required.
+
+Before a release, run:
+
+```bash
+npm run validate
+npm run test:coverage
+npm run test:exports
+npm run check:artifacts
+npm run audit:production
+```
+
+Production audit policy fails on high or critical vulnerabilities in runtime
+dependencies. Full development-dependency audit results are tracked
+separately with `npm run audit:full`; development-tool findings must be
+reviewed before promoting a release candidate. Dependabot is configured for
+weekly npm update proposals.
+
+The package export and artifact checks verify ESM entry points, declaration
+files, and npm dry-run contents. Source and test files must not be included in
+published artifacts. Performance and memory regression tests assert bounded
+normalization output and local processing budgets, but they are not production
+capacity benchmarks.
+
+Roll out in stages: run monitor mode in a representative environment, review
+sanitized decisions and false positives, configure bounded parser limits and
+shared atomic stores, then enable narrowly scoped throttle or block rules.
+Keep an application-level emergency disable path, monitor inspection errors,
+store outages, callback timeouts, memory pressure, and event volume. Do not
+represent this experimental SDK as a complete WAF or as proof that an input
+indicator is exploitable.
+
 ## Runtime instrumentation
 
 Instrumentation is opt-in and host-invoked through `InstrumentationHub`; the
