@@ -4,6 +4,8 @@ export const MAX_ROUTE_LENGTH = 512;
 export const MAX_COLLECTION_SIZE = 50;
 export const MAX_METADATA_ENTRIES = 20;
 
+export * from './detection.js';
+
 export type SchemaVersion = typeof CURRENT_SCHEMA_VERSION;
 export type SecurityAction = 'allow' | 'monitor' | 'throttle' | 'block' | 'challenge';
 export type SecuritySeverity = 'low' | 'medium' | 'high' | 'critical';

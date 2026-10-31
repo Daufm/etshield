@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DetectionEngine } from '../src/index.js';
-import type { Detector } from '../src/detection/types.js';
+import type { DetectionPlugin, Detector } from '../src/detection/types.js';
 
 const engine = new DetectionEngine();
 
@@ -134,5 +134,35 @@ describe('DetectionEngine', () => {
         message: 'Detector test.detector_failure failed during inspection.',
       },
     ]);
+  });
+
+  it('runs versioned detection plugins through the compatibility engine', () => {
+    const plugin: DetectionPlugin = {
+      id: 'test.plugin',
+      version: '1.0',
+      categories: ['input'],
+      inspect: (context) => [
+        {
+          ruleId: 'test.plugin',
+          category: 'input',
+          severity: 'low',
+          confidence: 0.5,
+          component: context.values[0]?.component ?? 'route',
+          path: context.values[0]?.path ?? '$route',
+          reasonCode: 'plugin_ran',
+        },
+      ],
+    };
+
+    const result = new DetectionEngine([plugin]).inspect({
+      method: 'GET',
+      route: '/health',
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.findings[0]).toMatchObject({
+      ruleId: 'test.plugin',
+      reasonCode: 'plugin_ran',
+    });
   });
 });

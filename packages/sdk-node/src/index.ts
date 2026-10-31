@@ -13,12 +13,15 @@ import { EthioShieldExpressMiddleware } from './express.js';
 import type { EthioShieldExpressOptions } from './express.js';
 export { DetectionEngine, defaultDetectors } from './detection/engine.js';
 export type {
+  DetectionContext,
   DetectionError,
   DetectionFinding,
+  DetectionPlugin,
   DetectionRequest,
   DetectionResult,
 } from './detection/types.js';
 export type { Detector } from './detection/types.js';
+export { asDetectionPlugin, isDetectionPlugin } from './detection/plugin.js';
 export { LayeredRateLimiter } from './rate-limit/limiter.js';
 export { InMemoryAtomicCounterStore } from './rate-limit/store.js';
 export type {

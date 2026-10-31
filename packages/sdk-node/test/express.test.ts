@@ -215,6 +215,47 @@ describe('EthioShield Express middleware', () => {
     await shield.close();
   });
 
+  it('does not apply a method-scoped exclusion to other methods', async () => {
+    const shield = new EthioShield({
+      projectId: 'project_test',
+      policy: {
+        ...policy(),
+        routeExclusions: [{ route: '/search', methods: ['GET'] }],
+      },
+      mode: 'block',
+    });
+
+    const response = await request(appWith(shield))
+      .post('/search')
+      .send({ search: 'UNION SELECT username FROM users' });
+
+    expect(response.status).toBe(403);
+    await shield.close();
+  });
+
+  it('fails closed when trusted identity resolution throws in block mode', async () => {
+    const onError = vi.fn();
+    const shield = new EthioShield({
+      projectId: 'project_test',
+      policy: policy(),
+      mode: 'block',
+      trustedIdentity: () => {
+        throw new Error('identity failure');
+      },
+      onError,
+    });
+
+    const response = await request(appWith(shield)).get('/health');
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({ error: 'Security inspection unavailable' });
+    expect(onError).toHaveBeenCalledWith({
+      code: 'identity_error',
+      message: 'Trusted identity resolution failed.',
+    });
+    await shield.close();
+  });
+
   it('throttles by trusted target account identity rather than spoofable headers', async () => {
     const shield = new EthioShield({
       projectId: 'project_test',

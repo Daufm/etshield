@@ -5,6 +5,8 @@ import type {
   SecurityDecision,
   SecurityEvent,
   SecurityPolicy,
+  RouteExclusion,
+  HttpMethod,
 } from '@ethioshield/security-contracts';
 import {
   assertSecurityPolicy,
@@ -49,7 +51,7 @@ export interface EthioShieldExpressOptions {
   readonly projectId: string;
   readonly policy: SecurityPolicy;
   readonly mode?: EnforcementMode;
-  readonly routeExclusions?: readonly string[];
+  readonly routeExclusions?: readonly (string | RouteExclusion)[];
   readonly trustedProxy?: TrustedProxyConfiguration;
   readonly trustedIdentity?: (request: Request) => RateLimitIdentity | undefined;
   readonly rateLimit?: RateLimitConfiguration;
@@ -98,12 +100,21 @@ function isSafeExclusion(value: string): boolean {
   );
 }
 
-function matchesExclusion(route: string, exclusions: readonly string[]): boolean {
+function matchesExclusion(
+  route: string,
+  method: string,
+  exclusions: readonly (string | RouteExclusion)[],
+): boolean {
   return exclusions.some((exclusion) => {
-    if (exclusion.endsWith('/*')) {
-      return route.startsWith(exclusion.slice(0, -1));
+    const exclusionRoute = typeof exclusion === 'string' ? exclusion : exclusion.route;
+    const methods = typeof exclusion === 'string' ? undefined : exclusion.methods;
+    if (methods !== undefined && !methods.includes(method as HttpMethod)) {
+      return false;
     }
-    return route === exclusion;
+    if (exclusionRoute.endsWith('/*')) {
+      return route.startsWith(exclusionRoute.slice(0, -1));
+    }
+    return route === exclusionRoute;
   });
 }
 
@@ -213,9 +224,19 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
     if (options.mode !== undefined && !['monitor', 'block'].includes(options.mode)) {
       throw new TypeError('mode must be monitor or block');
     }
-    const exclusions =
-      options.routeExclusions ?? options.policy.routeExclusions.map(({ route }) => route);
-    if (exclusions.length > 50 || exclusions.some((route) => !isSafeExclusion(route))) {
+    const exclusions = options.routeExclusions ?? options.policy.routeExclusions;
+    if (
+      exclusions.length > 50 ||
+      exclusions.some((exclusion) => {
+        const route = typeof exclusion === 'string' ? exclusion : exclusion.route;
+        return (
+          !isSafeExclusion(route) ||
+          (typeof exclusion !== 'string' &&
+            exclusion.methods !== undefined &&
+            exclusion.methods.length === 0)
+        );
+      })
+    ) {
       throw new TypeError('routeExclusions contain an unsafe or excessive route');
     }
     const trustedProxy = options.trustedProxy;
@@ -276,7 +297,13 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       response.status(503).json({ error: 'EthioShield is shutting down' });
       return;
     }
-    if (matchesExclusion(request.path, this.options.routeExclusions ?? [])) {
+    if (
+      matchesExclusion(
+        request.path,
+        request.method.toUpperCase(),
+        this.options.routeExclusions ?? [],
+      )
+    ) {
       next();
       return;
     }
@@ -302,7 +329,19 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
 
     const clientIp = getClientIp(request, this.options.trustedProxy);
     const networkSignal = await resolveNetworkRisk(this.options.networkIntelligence, clientIp);
-    const identity = this.options.trustedIdentity?.(request);
+    let identity: RateLimitIdentity | undefined;
+    try {
+      identity = this.options.trustedIdentity?.(request);
+    } catch {
+      await this.reportError({
+        code: 'identity_error',
+        message: 'Trusted identity resolution failed.',
+      });
+      if (this.options.mode === 'block') {
+        response.status(503).json({ error: 'Security inspection unavailable' });
+        return;
+      }
+    }
     const network = networkSignal?.classification;
     const limiterIdentity =
       identity === undefined && network === undefined

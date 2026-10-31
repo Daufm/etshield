@@ -1,10 +1,11 @@
-import type { Detector, DetectionRequest, DetectionResult } from './types.js';
-import { MAX_FINDINGS } from './types.js';
+import type { DetectionPlugin, Detector, DetectionRequest, DetectionResult } from './types.js';
+import { DEFAULT_DETECTION_BUDGET } from './types.js';
 import { normalizeRequest } from './normalization.js';
 import { nosqlInjectionDetector } from './nosql-injection.js';
 import { pathTraversalDetector } from './path-traversal.js';
 import { sqlInjectionDetector } from './sql-injection.js';
 import { xssDetector } from './xss.js';
+import { asDetectionPlugin, isDetectionPlugin } from './plugin.js';
 
 export const defaultDetectors: readonly Detector[] = [
   sqlInjectionDetector,
@@ -14,14 +15,17 @@ export const defaultDetectors: readonly Detector[] = [
 ];
 
 export class DetectionEngine {
-  private readonly detectors: readonly Detector[];
+  private readonly detectors: readonly DetectionPlugin[];
 
-  public constructor(detectors: readonly Detector[] = defaultDetectors) {
-    this.detectors = detectors;
+  public constructor(detectors: readonly (Detector | DetectionPlugin)[] = defaultDetectors) {
+    this.detectors = detectors.map((detector) =>
+      isDetectionPlugin(detector) ? detector : asDetectionPlugin(detector),
+    );
   }
 
   public inspect(request: DetectionRequest): DetectionResult {
     const normalization = normalizeRequest(request);
+    const budget = DEFAULT_DETECTION_BUDGET;
     const errors = [];
     if (normalization.malformedEncoding) {
       errors.push({
@@ -39,19 +43,26 @@ export class DetectionEngine {
     const findings = [];
     for (const detector of this.detectors) {
       try {
-        findings.push(...detector.detect({ values: normalization.values }));
+        findings.push(
+          ...detector.inspect({
+            contractVersion: '1.0',
+            request,
+            values: normalization.values,
+            budget,
+          }),
+        );
       } catch {
         errors.push({
           code: 'detector_error' as const,
-          message: `Detector ${detector.ruleId} failed during inspection.`,
+          message: `Detector ${detector.id} failed during inspection.`,
         });
       }
-      if (findings.length >= MAX_FINDINGS) break;
+      if (findings.length >= budget.maxFindings) break;
     }
 
     return {
       status: errors.length === 0 ? 'complete' : 'error',
-      findings: findings.slice(0, MAX_FINDINGS),
+      findings: findings.slice(0, budget.maxFindings),
       errors,
       normalization,
     };

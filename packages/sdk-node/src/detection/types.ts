@@ -1,9 +1,23 @@
-import type { RuleCategory, SecuritySeverity } from '@ethioshield/security-contracts';
+import type {
+  DetectionBudget,
+  DetectionComponent,
+  DetectionReference,
+  RuleCategory,
+  SecuritySeverity,
+} from '@ethioshield/security-contracts';
 
 export const MAX_INPUT_STRING_LENGTH = 16_384;
 export const MAX_INPUT_NODES = 1_000;
 export const MAX_INPUT_DEPTH = 8;
 export const MAX_FINDINGS = 50;
+export const DEFAULT_DETECTION_BUDGET: DetectionBudget = {
+  maxInputBytes: 1_048_576,
+  maxNodes: MAX_INPUT_NODES,
+  maxDepth: MAX_INPUT_DEPTH,
+  maxValues: 1_000,
+  maxFindings: MAX_FINDINGS,
+  maxDurationMs: 25,
+};
 
 export interface DetectionRequest {
   readonly method: string;
@@ -13,7 +27,14 @@ export interface DetectionRequest {
   readonly body?: unknown;
 }
 
-export type InspectedComponent = 'route' | 'query' | 'routeParams' | 'body';
+export interface DetectionContext {
+  readonly contractVersion: '1.0';
+  readonly request: DetectionRequest;
+  readonly values: readonly NormalizedValue[];
+  readonly budget: DetectionBudget;
+}
+
+export type InspectedComponent = DetectionComponent;
 
 export interface NormalizedValue {
   readonly component: InspectedComponent;
@@ -37,15 +58,26 @@ export interface DetectionFinding {
   readonly component: InspectedComponent;
   readonly path: string;
   readonly reasonCode: string;
+  readonly evidenceId?: string;
+  readonly references?: readonly DetectionReference[];
 }
 
 export interface DetectorContext {
   readonly values: readonly NormalizedValue[];
+  readonly request?: DetectionRequest;
+  readonly budget?: DetectionBudget;
 }
 
 export interface Detector {
   readonly ruleId: string;
   detect(context: DetectorContext): readonly DetectionFinding[];
+}
+
+export interface DetectionPlugin {
+  readonly id: string;
+  readonly version: string;
+  readonly categories: readonly RuleCategory[];
+  inspect(context: DetectionContext): readonly DetectionFinding[];
 }
 
 export interface DetectionError {

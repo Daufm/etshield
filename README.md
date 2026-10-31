@@ -52,7 +52,11 @@ SQL-injection, NoSQL-injection, XSS, and path-traversal indicator detectors.
 It inspects only the normalized route, query values, route parameters, and
 body values supplied by the host application. Detection is heuristic and is
 not a complete prevention mechanism for SQL injection, XSS, or other attacks.
-The engine never changes request values and does not apply enforcement policy;
+The versioned detection contract is `1.0`. Existing detectors are exposed
+through compatibility adapters, and custom synchronous plugins receive a
+bounded, typed context containing the original request view, normalized
+values, and a detection budget. Plugins return findings and evidence; they do
+not apply enforcement policy. The engine never changes request values, and
 callers must handle an error result conservatively according to their policy.
 
 Normalization is bounded and non-mutating: scalar values are length-limited,
@@ -86,8 +90,10 @@ Telemetry failures and decision-hook failures are reported through `onError`
 when supplied, but never change the request decision.
 
 Route exclusions are exact routes or bounded prefix patterns ending in `/*`.
-They bypass detection and telemetry, so exclude only narrowly controlled
-health or infrastructure endpoints. Exclusions are validated at construction.
+They may be scoped to specific HTTP methods. They bypass detection and
+telemetry, so exclude only narrowly controlled health or infrastructure
+endpoints. Exclusions are validated at construction; a method-scoped exclusion
+does not bypass protection for other methods.
 
 Client IP metadata is omitted by default. Forwarded headers are ignored unless
 the immediate socket peer matches an explicitly configured IP allowlist in
