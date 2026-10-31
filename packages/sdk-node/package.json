@@ -1,0 +1,25 @@
+{
+  "name": "@ethioshield/sdk-node",
+  "version": "0.1.0-alpha.0",
+  "description": "Experimental Node.js SDK for EthioShield application security.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ethioshield/security-contracts": "0.1.0-alpha.0"
+  },
+  "peerDependencies": {
+    "express": "^5.0.0"
+  }
+}

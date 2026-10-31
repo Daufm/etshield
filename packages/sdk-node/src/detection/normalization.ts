@@ -1,0 +1,120 @@
+import type {
+  DetectionRequest,
+  InspectedComponent,
+  NormalizationResult,
+  NormalizedValue,
+} from './types.js';
+import { MAX_INPUT_DEPTH, MAX_INPUT_NODES, MAX_INPUT_STRING_LENGTH } from './types.js';
+
+const MAX_VALUES = 1_000;
+
+interface WorkItem {
+  readonly component: InspectedComponent;
+  readonly path: string;
+  readonly value: unknown;
+  readonly depth: number;
+}
+
+function scalarToString(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  return undefined;
+}
+
+function normalizeScalar(value: string): { value: string; malformedEncoding: boolean } {
+  const bounded = value.slice(0, MAX_INPUT_STRING_LENGTH);
+  let decoded = bounded;
+  let malformedEncoding = false;
+  try {
+    decoded = decodeURIComponent(bounded);
+  } catch {
+    malformedEncoding = /%[0-9a-f]{0,2}$/i.test(bounded) || /%/i.test(bounded);
+  }
+  return {
+    value: decoded.normalize('NFKC').toLocaleLowerCase(),
+    malformedEncoding,
+  };
+}
+
+export function normalizeRequest(request: DetectionRequest): NormalizationResult {
+  const values: NormalizedValue[] = [];
+  const work: WorkItem[] = [{ component: 'route', path: '$route', value: request.route, depth: 0 }];
+  for (const [component, value] of [
+    ['query', request.query],
+    ['routeParams', request.routeParams],
+    ['body', request.body],
+  ] as const) {
+    if (value !== undefined) work.push({ component, path: '$', value, depth: 0 });
+  }
+
+  let nodes = 0;
+  let truncated = false;
+  let malformedEncoding = false;
+  let limitsExceeded = false;
+
+  while (work.length > 0) {
+    const item = work.pop();
+    if (item === undefined) break;
+    nodes += 1;
+    if (nodes > MAX_INPUT_NODES || values.length >= MAX_VALUES) {
+      limitsExceeded = true;
+      break;
+    }
+
+    const scalar = scalarToString(item.value);
+    if (scalar !== undefined) {
+      const normalized = normalizeScalar(scalar);
+      values.push({
+        component: item.component,
+        path: item.path.slice(0, 256),
+        value: normalized.value,
+        malformedEncoding: normalized.malformedEncoding,
+      });
+      malformedEncoding ||= normalized.malformedEncoding;
+      truncated ||= scalar.length > MAX_INPUT_STRING_LENGTH;
+      continue;
+    }
+
+    if (item.value === null || typeof item.value !== 'object') continue;
+    if (item.depth >= MAX_INPUT_DEPTH) {
+      limitsExceeded = true;
+      continue;
+    }
+
+    if (Array.isArray(item.value)) {
+      for (let index = item.value.length - 1; index >= 0; index -= 1) {
+        work.push({
+          component: item.component,
+          path: `${item.path}[${index}]`,
+          value: item.value[index],
+          depth: item.depth + 1,
+        });
+      }
+      continue;
+    }
+
+    const record = item.value as Record<string, unknown>;
+    const entries = Object.entries(record);
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry === undefined) continue;
+      const [key, value] = entry;
+      work.push({
+        component: item.component,
+        path: `${item.path}.${key.slice(0, 128)}`,
+        value: key,
+        depth: item.depth + 1,
+      });
+      work.push({
+        component: item.component,
+        path: `${item.path}.${key.slice(0, 128)}`,
+        value,
+        depth: item.depth + 1,
+      });
+    }
+  }
+
+  return { values, truncated, malformedEncoding, limitsExceeded };
+}

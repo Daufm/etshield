@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/security-contracts" },
+    { "path": "./packages/sdk-node" },
+    { "path": "./apps/playground" }
+  ]
+}
