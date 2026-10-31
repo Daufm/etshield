@@ -142,6 +142,15 @@ is required for atomic multi-instance enforcement; the built-in
 and tests. Counter keys have bounded cardinality, windows have TTLs, and
 store outages follow each policy's configured `failureMode`.
 
+Stateful correlation is separately configurable through policy correlation
+rules. It supports trusted authenticated-user and target-account dimensions,
+route, and IP as an additional dimension. Rules can be scoped to a route and
+network-risk threshold. The bounded `InMemoryCorrelationStore` is intended
+only for single-process development and tests; multi-instance deployments
+must provide a shared atomic `CorrelationStore`. Missing trusted identity
+values do not fall back to IP alone for identity correlation, and correlation
+store cardinality failures follow the configured deterministic failure mode.
+
 `NetworkIntelligenceResolver` is optional and returns expiring,
 provenance-bearing risk signals. VPN, proxy, Tor, hosting, and residential
 classification is only a risk signal: VPN usage alone never blocks a request,
@@ -153,6 +162,22 @@ requires an explicit host `ChallengeAdapter`; no challenge provider is bundled.
 The MVP does not include a paid intelligence provider, ASN database, cloud
 counter service, dashboard, billing, or persistent device fingerprinting.
 Future work may add those behind explicit approvals and privacy review.
+
+## Runtime instrumentation
+
+Instrumentation is opt-in and host-invoked through `InstrumentationHub`; the
+SDK never monkey-patches global database, network, filesystem, process, or
+authorization APIs. The hub exposes typed observers for SQL, outbound HTTP,
+filesystem, command execution, and authorization decisions. Observations use
+sanitized classifications and a per-request correlation ID rather than raw
+queries, credentials, paths, command arguments, cookies, or request bodies.
+Observer calls are bounded by a configurable timeout of at most one second
+(100 ms by default), and observer errors return isolated failure results
+without changing application behavior.
+
+The Express middleware generates one correlation ID per request. It is
+available in `DecisionContext.correlationId`, in the detection plugin context,
+and through `shield.getCorrelationId(request)` for host instrumentation code.
 
 ## Security
 

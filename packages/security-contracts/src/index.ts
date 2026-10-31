@@ -31,6 +31,7 @@ export type RateLimitKeyType =
   | 'ip'
   | 'network';
 export type RateLimitFailureMode = 'monitor' | 'block';
+export type CorrelationDimension = 'authenticated_user' | 'target_account' | 'route' | 'ip';
 export type HttpMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
 
 export interface SanitizedReasonMetadata {
@@ -96,6 +97,22 @@ export interface RateLimitConfiguration {
   readonly failureMode?: RateLimitFailureMode;
 }
 
+export interface CorrelationRule {
+  readonly ruleId: string;
+  readonly dimensions: readonly CorrelationDimension[];
+  readonly windowSeconds: number;
+  readonly maxEvents: number;
+  readonly action: Extract<SecurityAction, 'monitor' | 'throttle' | 'block' | 'challenge'>;
+  readonly route?: string;
+  readonly riskThreshold?: number;
+}
+
+export interface CorrelationConfiguration {
+  readonly enabled: boolean;
+  readonly rules: readonly CorrelationRule[];
+  readonly failureMode?: RateLimitFailureMode;
+}
+
 export interface RateLimitRule {
   readonly ruleId: string;
   readonly keyTypes: readonly RateLimitKeyType[];
@@ -129,6 +146,7 @@ export interface SecurityPolicy {
   readonly rules: readonly RuleSetting[];
   readonly routeExclusions: readonly RouteExclusion[];
   readonly rateLimit: RateLimitConfiguration;
+  readonly correlation?: CorrelationConfiguration;
 }
 
 export interface ProjectMetadata {
@@ -364,6 +382,7 @@ function validatePolicy(value: unknown): value is SecurityPolicy {
       'rules',
       'routeExclusions',
       'rateLimit',
+      'correlation',
     ]) ||
     value.schemaVersion !== CURRENT_SCHEMA_VERSION ||
     !validateVersion(value.policyVersion) ||
@@ -489,6 +508,53 @@ function validatePolicy(value: unknown): value is SecurityPolicy {
         !isFiniteNumber(rule.maxRequests) ||
         rule.maxRequests < 1 ||
         rule.maxRequests > 1_000_000 ||
+        !isEnum(rule.action, ['monitor', 'throttle', 'block', 'challenge']) ||
+        (rule.route !== undefined && !validateRoute(rule.route)) ||
+        (rule.riskThreshold !== undefined &&
+          (!isFiniteNumber(rule.riskThreshold) || rule.riskThreshold < 0 || rule.riskThreshold > 1))
+      ) {
+        return false;
+      }
+    }
+  }
+  if (value.correlation !== undefined) {
+    if (
+      !isRecord(value.correlation) ||
+      !hasOnlyKeys(value.correlation, ['enabled', 'rules', 'failureMode']) ||
+      typeof value.correlation.enabled !== 'boolean' ||
+      !Array.isArray(value.correlation.rules) ||
+      value.correlation.rules.length > MAX_COLLECTION_SIZE ||
+      (value.correlation.failureMode !== undefined &&
+        !isEnum(value.correlation.failureMode, ['monitor', 'block']))
+    ) {
+      return false;
+    }
+    for (const rule of value.correlation.rules) {
+      if (
+        !isRecord(rule) ||
+        !hasOnlyKeys(rule, [
+          'ruleId',
+          'dimensions',
+          'windowSeconds',
+          'maxEvents',
+          'action',
+          'route',
+          'riskThreshold',
+        ]) ||
+        !validateIdentifier(rule.ruleId) ||
+        !Array.isArray(rule.dimensions) ||
+        rule.dimensions.length === 0 ||
+        rule.dimensions.length > 4 ||
+        rule.dimensions.some(
+          (dimension) =>
+            !isEnum(dimension, ['authenticated_user', 'target_account', 'route', 'ip']),
+        ) ||
+        !isFiniteNumber(rule.windowSeconds) ||
+        rule.windowSeconds < 1 ||
+        rule.windowSeconds > 86_400 ||
+        !isFiniteNumber(rule.maxEvents) ||
+        rule.maxEvents < 1 ||
+        rule.maxEvents > 1_000_000 ||
         !isEnum(rule.action, ['monitor', 'throttle', 'block', 'challenge']) ||
         (rule.route !== undefined && !validateRoute(rule.route)) ||
         (rule.riskThreshold !== undefined &&

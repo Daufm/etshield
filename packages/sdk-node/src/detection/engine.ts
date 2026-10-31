@@ -56,6 +56,7 @@ export class DetectionEngine {
           values: normalization.values,
           budget,
           headers: normalization.headers,
+          ...(request.correlationId === undefined ? {} : { correlationId: request.correlationId }),
         })) {
           const evidenceId =
             finding.evidenceId ??

@@ -28,6 +28,7 @@ export interface DetectionRequest {
   readonly routeParams?: unknown;
   readonly body?: unknown;
   readonly headers?: unknown;
+  readonly correlationId?: string;
 }
 
 export interface DetectionContext {
@@ -36,6 +37,7 @@ export interface DetectionContext {
   readonly values: readonly NormalizedValue[];
   readonly budget: DetectionBudget;
   readonly headers: SanitizedHeaders;
+  readonly correlationId?: string;
 }
 
 export type InspectedComponent = DetectionComponent;

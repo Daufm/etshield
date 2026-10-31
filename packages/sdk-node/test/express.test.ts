@@ -52,7 +52,10 @@ describe('EthioShield Express middleware', () => {
     expect(response.headers['x-ethioshield-action']).toBe('allow');
     expect(onDecision).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'allow' }),
-      expect.objectContaining({ event: expect.any(Object) }),
+      expect.objectContaining({
+        event: expect.any(Object),
+        correlationId: expect.any(String),
+      }),
     );
     await shield.close();
   });
@@ -288,6 +291,38 @@ describe('EthioShield Express middleware', () => {
     expect(response.status).toBe(429);
     expect(response.body).toEqual({ error: 'Request throttled by security policy' });
     expect(response.headers['retry-after']).toBeDefined();
+    await shield.close();
+  });
+
+  it('applies trusted account correlation across changing client IPs', async () => {
+    const shield = new EthioShield({
+      projectId: 'project_test',
+      policy: {
+        ...policy(),
+        correlation: {
+          enabled: true,
+          rules: [
+            {
+              ruleId: 'account.behavior',
+              dimensions: ['target_account'],
+              windowSeconds: 60,
+              maxEvents: 1,
+              action: 'block',
+            },
+          ],
+        },
+      },
+      trustedProxy: { addresses: ['127.0.0.1'] },
+      trustedIdentity: () => ({ targetAccountId: 'account-1' }),
+    });
+
+    const app = appWith(shield);
+    expect((await request(app).get('/health').set('x-forwarded-for', '198.51.100.1')).status).toBe(
+      200,
+    );
+    expect((await request(app).get('/health').set('x-forwarded-for', '198.51.100.2')).status).toBe(
+      403,
+    );
     await shield.close();
   });
 

@@ -21,6 +21,10 @@ import type { ChallengeAdapter } from './challenge.js';
 import { resolveNetworkRisk, type NetworkIntelligenceResolver } from './network-intelligence.js';
 import { LayeredRateLimiter } from './rate-limit/limiter.js';
 import type { AtomicCounterStore, RateLimitIdentity } from './rate-limit/types.js';
+import { StatefulCorrelator } from './correlation.js';
+import type { CorrelationStore } from './correlation.js';
+import { InstrumentationHub } from './instrumentation.js';
+import type { InstrumentationOptions } from './instrumentation.js';
 
 const SDK_VERSION = '0.1.0-alpha.0';
 const MAX_PROJECT_ID_LENGTH = 128;
@@ -38,6 +42,11 @@ export interface RateLimitConfiguration {
   readonly maxKeys?: number;
 }
 
+export interface CorrelationConfiguration {
+  readonly store?: CorrelationStore;
+  readonly maxKeys?: number;
+}
+
 export interface TelemetryAdapter {
   emit(event: SecurityEvent): void | Promise<void>;
   close?(): void | Promise<void>;
@@ -46,6 +55,7 @@ export interface TelemetryAdapter {
 export interface DecisionContext {
   readonly event: SecurityEvent;
   readonly detection: DetectionResult;
+  readonly correlationId: string;
 }
 
 export interface EthioShieldExpressOptions {
@@ -56,6 +66,8 @@ export interface EthioShieldExpressOptions {
   readonly trustedProxy?: TrustedProxyConfiguration;
   readonly trustedIdentity?: (request: Request) => RateLimitIdentity | undefined;
   readonly rateLimit?: RateLimitConfiguration;
+  readonly correlation?: CorrelationConfiguration;
+  readonly instrumentation?: InstrumentationOptions;
   readonly networkIntelligence?: NetworkIntelligenceResolver;
   readonly challengeAdapter?: ChallengeAdapter;
   readonly telemetry?: TelemetryAdapter;
@@ -74,6 +86,7 @@ export interface EthioShieldExpressOptions {
 
 export interface EthioShieldExpress {
   protect(): RequestHandler;
+  getCorrelationId(request: Request): string | undefined;
   close(): Promise<void>;
 }
 
@@ -216,6 +229,9 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
     EthioShieldExpressOptions;
   private closed = false;
   private readonly limiter: LayeredRateLimiter | undefined;
+  private readonly correlator: StatefulCorrelator | undefined;
+  public readonly instrumentation: InstrumentationHub;
+  private readonly correlationIds = new WeakMap<Request, string>();
 
   public constructor(options: EthioShieldExpressOptions) {
     assertSecurityPolicy(options.policy);
@@ -257,6 +273,7 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       eventId: options.eventId ?? (() => crypto.randomUUID()),
       routeExclusions: exclusions,
     };
+    this.instrumentation = new InstrumentationHub(options.instrumentation ?? { observers: {} });
     const rules = options.policy.rateLimit.rules ?? [];
     const rateLimitOptions = {
       rules,
@@ -268,12 +285,30 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       options.policy.rateLimit.enabled && rules.length > 0
         ? new LayeredRateLimiter(rateLimitOptions)
         : undefined;
+    const correlationPolicy = options.policy.correlation;
+    this.correlator =
+      correlationPolicy?.enabled && correlationPolicy.rules.length > 0
+        ? new StatefulCorrelator({
+            rules: correlationPolicy.rules,
+            failureMode: correlationPolicy.failureMode ?? 'monitor',
+            ...(options.correlation?.store === undefined
+              ? {}
+              : { store: options.correlation.store }),
+            ...(options.correlation?.maxKeys === undefined
+              ? {}
+              : { maxKeys: options.correlation.maxKeys }),
+          })
+        : undefined;
   }
 
   public protect(): RequestHandler {
     return (request: Request, response: Response, next: NextFunction): void => {
       void this.handle(request, response, next);
     };
+  }
+
+  public getCorrelationId(request: Request): string | undefined {
+    return this.correlationIds.get(request);
   }
 
   public async close(): Promise<void> {
@@ -290,6 +325,7 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       });
     }
     await this.limiter?.close();
+    await this.correlator?.close();
     await this.options.networkIntelligence?.close?.();
   }
 
@@ -298,6 +334,8 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       response.status(503).json({ error: 'EthioShield is shutting down' });
       return;
     }
+    const correlationId = crypto.randomUUID();
+    this.correlationIds.set(request, correlationId);
     if (
       matchesExclusion(
         request.path,
@@ -318,6 +356,7 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
         routeParams: request.params,
         body: request.body,
         headers: request.headers,
+        correlationId,
       });
     } catch {
       await this.reportError({ code: 'detection_error', message: 'Security inspection failed.' });
@@ -362,6 +401,14 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
             : { riskScore: networkSignal.confidence }),
         })
       : undefined;
+    const correlation = this.correlator
+      ? await this.correlator.check({
+          route: request.path,
+          ...(clientIp === undefined ? {} : { ip: clientIp }),
+          ...(limiterIdentity === undefined ? {} : { identity: limiterIdentity }),
+          ...(networkSignal === undefined ? {} : { riskScore: networkSignal.confidence }),
+        })
+      : undefined;
     const failed = detection.status === 'error';
     if (failed) {
       await this.reportError({
@@ -370,27 +417,35 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       });
     }
     const rateLimited = rateLimit !== undefined && rateLimit.action !== 'allow';
+    const correlated = correlation !== undefined && correlation.action !== 'allow';
     const policyEvaluation = evaluateDetection(this.options.policy, detection, {
       enforcementMode: this.options.mode === 'block' ? 'enforce' : 'monitor',
       fallbackAction: this.options.mode === 'block' ? 'block' : 'monitor',
     });
-    const action: SecurityAction = rateLimited ? rateLimit.action : policyEvaluation.action;
-    const hasFindings = detection.findings.length > 0;
+    const action: SecurityAction = rateLimited
+      ? rateLimit.action
+      : correlated
+        ? correlation.action
+        : policyEvaluation.action;
     const blocked = action === 'block';
     const throttled = action === 'throttle';
     const challenged = action === 'challenge';
     const decision = createDecision(
       action,
       this.options.policy,
-      rateLimited ? rateLimit.ruleId : policyEvaluation.ruleId,
-      rateLimited ? 'rate_limit' : policyEvaluation.category,
+      rateLimited ? rateLimit.ruleId : correlated ? correlation.ruleId : policyEvaluation.ruleId,
+      rateLimited || correlated ? 'rate_limit' : policyEvaluation.category,
       rateLimited
         ? rateLimit.storeError
           ? 'rate_limit_store_unavailable'
           : 'rate_limit_exceeded'
-        : policyEvaluation.reasonCode,
+        : correlated
+          ? correlation.storeError
+            ? 'correlation_store_unavailable'
+            : 'correlation_threshold_exceeded'
+          : policyEvaluation.reasonCode,
       detection,
-      rateLimited ? detection.findings[0] : policyEvaluation.finding,
+      rateLimited || correlated ? detection.findings[0] : policyEvaluation.finding,
     );
 
     let event: SecurityEvent;
@@ -418,7 +473,7 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       return;
     }
 
-    await this.runHook(decision, { event, detection });
+    await this.runHook(decision, { event, detection, correlationId });
     await this.emitTelemetry(event);
 
     if (challenged) {
@@ -460,10 +515,8 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       }
     }
     if (blocked) {
-      response.status(hasFindings ? 403 : 503).json({
-        error: hasFindings
-          ? 'Request blocked by security policy'
-          : 'Security inspection unavailable',
+      response.status(failed ? 503 : 403).json({
+        error: failed ? 'Security inspection unavailable' : 'Request blocked by security policy',
       });
       return;
     }

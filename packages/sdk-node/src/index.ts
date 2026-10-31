@@ -49,6 +49,25 @@ export type {
 export type { RateLimitConfiguration } from './express.js';
 export { resolveNetworkRisk } from './network-intelligence.js';
 export type { NetworkIntelligenceResolver } from './network-intelligence.js';
+export { InstrumentationHub } from './instrumentation.js';
+export type {
+  AuthorizationObservation,
+  CommandObservation,
+  FilesystemObservation,
+  InstrumentationFailure,
+  InstrumentationObservers,
+  InstrumentationOptions,
+  InstrumentationResult,
+  OutboundHttpObservation,
+  SqlObservation,
+} from './instrumentation.js';
+export { InMemoryCorrelationStore, StatefulCorrelator } from './correlation.js';
+export type {
+  CorrelationOptions,
+  CorrelationOutcome,
+  CorrelationRequest,
+  CorrelationStore,
+} from './correlation.js';
 export type { ChallengeAdapter } from './challenge.js';
 export { EthioShieldExpressMiddleware, createEthioShieldExpress } from './express.js';
 export type {
@@ -56,6 +75,7 @@ export type {
   EnforcementMode,
   EthioShieldExpress,
   EthioShieldExpressOptions,
+  CorrelationConfiguration,
   TelemetryAdapter,
   TrustedProxyConfiguration,
 } from './express.js';
