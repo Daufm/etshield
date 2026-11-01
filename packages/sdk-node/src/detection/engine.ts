@@ -195,8 +195,30 @@ export class DetectionEngine {
 
     const elapsedMs = Math.max(0, this.now() - startedAt);
     const exceeded = budgetExceeded;
+    const degradedCodes = errors
+      .filter((error) =>
+        ['normalization_limit', 'ambiguous_representation', 'body_unavailable'].includes(
+          error.code,
+        ),
+      )
+      .map((error) => error.code);
+    const failedCodes = errors.filter((error) =>
+      ['detector_error', 'invalid_finding', 'parser_error', 'budget_exceeded', 'malformed_encoding'].includes(
+        error.code,
+      ),
+    );
+    const outcome =
+      findings.length > 0
+        ? 'indicator'
+        : failedCodes.length > 0
+          ? 'failed'
+          : degradedCodes.length > 0
+            ? 'degraded'
+            : 'clean';
     return {
       status: errors.length === 0 ? 'complete' : budgetExceeded ? 'inconclusive' : 'error',
+      outcome,
+      degradedCodes,
       findings: findings.slice(0, budget.maxFindings),
       errors,
       normalization,

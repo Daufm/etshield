@@ -21,6 +21,7 @@ export type {
   DetectionPlugin,
   DetectionRequest,
   DetectionResult,
+  DetectionOutcome,
 } from './detection/types.js';
 export type {
   DetectionInspectionErrorCode,
@@ -84,12 +85,14 @@ export type {
 } from './correlation.js';
 export type { ChallengeAdapter } from './challenge.js';
 export { EthioShieldExpressMiddleware, createEthioShieldExpress } from './express.js';
+export { sanitizeEventRoute } from './event-route.js';
 export type {
   DecisionContext,
   EnforcementMode,
   EthioShieldExpress,
   EthioShieldExpressOptions,
   CorrelationConfiguration,
+  InspectionConfiguration,
   TelemetryAdapter,
   TrustedProxyConfiguration,
 } from './express.js';

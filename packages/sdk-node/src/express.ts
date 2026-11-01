@@ -25,6 +25,7 @@ import { StatefulCorrelator } from './correlation.js';
 import type { CorrelationStore } from './correlation.js';
 import { InstrumentationHub } from './instrumentation.js';
 import type { InstrumentationOptions } from './instrumentation.js';
+import { sanitizeEventRoute } from './event-route.js';
 
 const SDK_VERSION = '0.1.0-alpha.0';
 const MAX_PROJECT_ID_LENGTH = 128;
@@ -47,6 +48,10 @@ export interface CorrelationConfiguration {
   readonly maxKeys?: number;
 }
 
+export interface InspectionConfiguration {
+  readonly degradedAction?: 'monitor' | 'block';
+}
+
 export interface TelemetryAdapter {
   emit(event: SecurityEvent): void | Promise<void>;
   close?(): void | Promise<void>;
@@ -67,6 +72,7 @@ export interface EthioShieldExpressOptions {
   readonly trustedIdentity?: (request: Request) => RateLimitIdentity | undefined;
   readonly rateLimit?: RateLimitConfiguration;
   readonly correlation?: CorrelationConfiguration;
+  readonly inspection?: InspectionConfiguration;
   readonly instrumentation?: InstrumentationOptions;
   readonly networkIntelligence?: NetworkIntelligenceResolver;
   readonly challengeAdapter?: ChallengeAdapter;
@@ -164,6 +170,8 @@ function getBodyInspectionState(request: Request): BodyInspectionState {
 function emptyDetectionResult(): DetectionResult {
   return {
     status: 'complete',
+    outcome: 'clean',
+    degradedCodes: [],
     findings: [],
     errors: [],
     normalization: {
@@ -191,6 +199,7 @@ function createDecision(
   category: SecurityDecision['category'],
   reasonCode: string,
   detection: DetectionResult,
+  reasonAttributes: Readonly<Record<string, string | number | boolean>> = {},
   finding?: DetectionResult['findings'][number],
 ): SecurityDecision {
   const decision: SecurityDecision = {
@@ -203,6 +212,7 @@ function createDecision(
       code: reasonCode,
       attributes: {
         findingCount: detection.findings.length,
+        ...reasonAttributes,
       },
     },
   };
@@ -230,7 +240,7 @@ function createEvent(
     occurredAt: clock().toISOString(),
     request: {
       method,
-      route: request.path,
+      route: sanitizeEventRoute(request.path),
     },
     detection: {
       category: firstFinding?.category ?? decision.category,
@@ -339,7 +349,24 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
 
   public protect(): RequestHandler {
     return (request: Request, response: Response, next: NextFunction): void => {
-      void this.handle(request, response, next);
+      let nextCalled = false;
+      const guardedNext: NextFunction = (error?: unknown) => {
+        if (nextCalled) return;
+        nextCalled = true;
+        next(error);
+      };
+      void this.handle(request, response, guardedNext).catch(async () => {
+        await this.reportError({
+          code: 'internal_error',
+          message: 'Security request handling failed unexpectedly.',
+        });
+        if (response.headersSent) return;
+        if (this.options.mode === 'block') {
+          response.status(503).json({ error: 'Security inspection unavailable' });
+          return;
+        }
+        guardedNext();
+      });
     };
   }
 
@@ -488,6 +515,7 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
     const policyEvaluation = evaluateDetection(this.options.policy, detection, {
       enforcementMode: this.options.mode === 'block' ? 'enforce' : 'monitor',
       fallbackAction: this.options.mode === 'block' ? 'block' : 'monitor',
+      ...(this.options.inspection === undefined ? {} : { inspection: this.options.inspection }),
     });
     const action: SecurityAction = rateLimited
       ? rateLimit.action
@@ -512,6 +540,12 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
             : 'correlation_threshold_exceeded'
           : policyEvaluation.reasonCode,
       detection,
+      policyEvaluation.degradedCodes === undefined
+        ? {}
+        : {
+            degraded: true,
+            degradedCodes: policyEvaluation.degradedCodes.join(','),
+          },
       rateLimited || correlated ? detection.findings[0] : policyEvaluation.finding,
     );
 
@@ -582,9 +616,16 @@ export class EthioShieldExpressMiddleware implements EthioShieldExpress {
       }
     }
     if (blocked) {
-      response.status(failed ? 503 : 403).json({
-        error: failed ? 'Security inspection unavailable' : 'Request blocked by security policy',
-      });
+      if (detection.outcome === 'degraded') {
+        response.status(503).json({ error: 'Security inspection incomplete' });
+      } else {
+        response.status(failed && detection.outcome === 'failed' ? 503 : 403).json({
+          error:
+            failed && detection.outcome === 'failed'
+              ? 'Security inspection unavailable'
+              : 'Request blocked by security policy',
+        });
+      }
       return;
     }
     if (throttled) {

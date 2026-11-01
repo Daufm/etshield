@@ -28,14 +28,18 @@ function scalarToString(value: unknown): string | undefined {
   return undefined;
 }
 
-function normalizeScalar(value: string): { value: string; malformedEncoding: boolean } {
+function normalizeScalar(
+  value: string,
+  component: InspectedComponent,
+): { value: string; malformedEncoding: boolean } {
   const bounded = value.slice(0, MAX_INPUT_STRING_LENGTH);
   let decoded = bounded;
   let malformedEncoding = false;
   try {
     decoded = decodeURIComponent(bounded);
   } catch {
-    malformedEncoding = /%[0-9a-f]{0,2}$/i.test(bounded) || /%/i.test(bounded);
+    malformedEncoding =
+      component === 'route' && (/%[0-9a-f]{0,2}$/i.test(bounded) || /%/i.test(bounded));
   }
   return {
     value: decoded.normalize('NFKC').toLowerCase(),
@@ -98,7 +102,7 @@ export function normalizeRequest(request: DetectionRequest): NormalizationResult
         limitsExceeded = true;
         break;
       }
-      const normalized = normalizeScalar(scalar);
+      const normalized = normalizeScalar(scalar, item.component);
       const bounded = scalar.slice(0, MAX_INPUT_STRING_LENGTH);
       const decodedOnce = (() => {
         try {

@@ -6,6 +6,7 @@ export interface PolicyEvaluation {
   readonly ruleId: string;
   readonly category: DetectionFinding['category'];
   readonly reasonCode: string;
+  readonly degradedCodes?: readonly string[];
   readonly finding?: DetectionFinding;
 }
 
@@ -35,22 +36,12 @@ export function evaluateDetection(
   options?: {
     readonly enforcementMode?: SecurityPolicy['enforcementMode'];
     readonly fallbackAction?: SecurityAction;
+    readonly inspection?: {
+      readonly degradedAction?: Extract<SecurityAction, 'monitor' | 'block'>;
+    };
   },
 ): PolicyEvaluation {
   const enforcementMode = options?.enforcementMode ?? policy.enforcementMode;
-  if (detection.status !== 'complete') {
-    const action = applyEnforcementMode(
-      options?.fallbackAction ?? (enforcementMode === 'enforce' ? 'block' : 'monitor'),
-      enforcementMode,
-    );
-    return {
-      action,
-      ruleId: 'inspection.failure',
-      category: 'policy',
-      reasonCode: 'inspection_failed',
-    };
-  }
-
   for (const finding of detection.findings) {
     const rule = matchingRule(finding, policy.rules);
     if (
@@ -72,6 +63,40 @@ export function evaluateDetection(
           ? 'indicator_monitored_by_policy'
           : 'indicator_detected',
       finding,
+    };
+  }
+
+  if (
+    detection.findings.length === 0 &&
+    (detection.outcome === 'failed' ||
+      (detection.status !== 'complete' && detection.outcome !== 'degraded'))
+  ) {
+    const action = applyEnforcementMode(
+      options?.fallbackAction ?? (enforcementMode === 'enforce' ? 'block' : 'monitor'),
+      enforcementMode,
+    );
+    return {
+      action,
+      ruleId: 'inspection.failure',
+      category: 'policy',
+      reasonCode: 'inspection_failed',
+    };
+  }
+
+  if (detection.outcome === 'degraded') {
+    const bodyUnavailable = detection.degradedCodes.includes('body_unavailable');
+    const action = applyEnforcementMode(
+      bodyUnavailable && enforcementMode === 'enforce'
+        ? 'block'
+        : (options?.inspection?.degradedAction ?? 'monitor'),
+      enforcementMode,
+    );
+    return {
+      action,
+      ruleId: 'inspection.degraded',
+      category: 'policy',
+      reasonCode: 'inspection_failed',
+      degradedCodes: detection.degradedCodes,
     };
   }
 

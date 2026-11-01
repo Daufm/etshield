@@ -56,13 +56,8 @@ describe('DetectionEngine', () => {
       },
     });
 
-    expect(result.status).toBe('error');
-    expect(result.errors).toEqual([
-      {
-        code: 'malformed_encoding',
-        message: 'One or more request values contained malformed percent encoding.',
-      },
-    ]);
+    expect(result.status).toBe('complete');
+    expect(result.errors).toEqual([]);
     expect(result.findings).toEqual([
       expect.objectContaining({ ruleId: 'input.xss_indicator', path: '$.nested.value' }),
     ]);

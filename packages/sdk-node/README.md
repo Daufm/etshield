@@ -21,6 +21,21 @@ budget checked between detector executions; it is not a hard timeout and cannot
 interrupt synchronous JavaScript. Hard interruption would require a separately
 approved worker or process isolation design.
 
+Each result also has an additive `outcome`: `clean` means no indicator or
+inspection problem was observed, `indicator` means at least one finding was
+produced, `degraded` means inspection continued with a bounded limitation
+(`normalization_limit`, `ambiguous_representation`, or `body_unavailable`), and
+`failed` means inspection encountered an error. Findings are evaluated before
+these fallback states, so an indicator is not discarded merely because the
+same request was truncated or ambiguous.
+
+For Express, `inspection.degradedAction` can be set to `monitor` (the default)
+or `block`. Blocking degraded requests returns `503 Security inspection
+incomplete` when no finding applies. This is a deliberate latency and
+availability trade-off: padding a request beyond the normalization cap can
+otherwise evade blocking of content that was not inspected. Body-unavailable
+requests retain the existing fail-closed behavior in block mode.
+
 Findings are request indicators, not proof that an exploit reached a database,
 HTML output, filesystem, command, or outbound HTTP sink. Sink-level
 exploitability requires explicit host integration and is not implemented by

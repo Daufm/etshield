@@ -28,6 +28,8 @@ function detection(
 ): DetectionResult {
   return {
     status,
+    outcome: status === 'complete' ? (findings.length > 0 ? 'indicator' : 'clean') : 'failed',
+    degradedCodes: [],
     findings,
     errors: [],
     normalization: {

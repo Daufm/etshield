@@ -18,6 +18,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:publish-smoke": "node --test scripts/publish-smoke.test.mjs",
+    "test:perf": "vitest run --config vitest.perf.config.ts --maxWorkers=1",
     "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:exports": "npm run build && node --test scripts/package-exports.test.mjs",

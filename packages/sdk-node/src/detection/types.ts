@@ -11,6 +11,7 @@ import type {
 import type { SanitizedHeaders } from './parsers/headers.js';
 import type { ParserError } from './parsers/types.js';
 export type { DetectionBudgetOutcome } from '@ethioshield/security-contracts';
+export type DetectionOutcome = 'clean' | 'indicator' | 'degraded' | 'failed';
 
 export const MAX_INPUT_STRING_LENGTH = 16_384;
 export const MAX_INPUT_NODES = 1_000;
@@ -126,6 +127,8 @@ export interface DetectionError {
 
 export interface DetectionResult {
   readonly status: DetectionInspectionStatus;
+  readonly outcome: DetectionOutcome;
+  readonly degradedCodes: readonly string[];
   readonly findings: readonly DetectionFinding[];
   readonly errors: readonly DetectionError[];
   readonly normalization: NormalizationResult;
