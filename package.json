@@ -32,7 +32,7 @@
   "devDependencies": {
     "@eslint/js": "9.39.1",
     "@types/node": "22.19.1",
-    "@vitest/coverage-v8": "3.2.4",
+    "@vitest/coverage-v8": "5.0.5",
     "eslint": "9.39.1",
     "eslint-config-prettier": "10.1.8",
     "express": "5.1.0",
