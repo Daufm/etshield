@@ -102,7 +102,9 @@ describe('architecture review regression cases', () => {
       const app = appWithShield(shield, (configured) => {
         configured.post('/json', (req, res) => res.json({ received: req.body }));
       });
-      const response = await request(app).post('/json').send({ value: 'x'.repeat(20_000) });
+      const response = await request(app)
+        .post('/json')
+        .send({ value: 'x'.repeat(20_000) });
       expect(response.status).toBe(503);
       expect(response.body).toEqual({ error: 'Security inspection incomplete' });
     } finally {
@@ -112,7 +114,9 @@ describe('architecture review regression cases', () => {
 
   it('M1 component-specific malformed encoding handling', () => {
     const engine = new DetectionEngine([]);
-    expect(engine.inspect({ method: 'GET', route: '/x%zz', query: { q: '%zz' }, body: { q: '%zz' } })).toMatchObject({
+    expect(
+      engine.inspect({ method: 'GET', route: '/x%zz', query: { q: '%zz' }, body: { q: '%zz' } }),
+    ).toMatchObject({
       outcome: 'failed',
       normalization: { malformedEncoding: true },
     });
@@ -182,9 +186,7 @@ describe('architecture review regression cases', () => {
       const response = await request(appWithShield(shield)).get('/health');
       expect(response.status).toBe(status);
       expect(expectedMode).toBe(mode);
-      expect(onError).toHaveBeenCalledWith(
-        expect.objectContaining({ code: 'internal_error' }),
-      );
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'internal_error' }));
       await new Promise((resolve) => setImmediate(resolve));
       expect(unhandledRejections).toEqual([]);
     } finally {
@@ -194,64 +196,110 @@ describe('architecture review regression cases', () => {
   });
 
   it.each([
-    ['A1.1 q=50%25', async () => {
-      const shield = new EthioShield({ projectId: 'regression', policy: policy(), mode: 'block' });
-      try {
-        const app = appWithShield(shield);
-        expect((await request(app).get('/s?q=50%25')).status).toBe(200);
-      } finally {
-        await shield.close();
-      }
-    }],
-    ['A1.2 20k field', async () => {
-      const shield = new EthioShield({ projectId: 'regression', policy: policy(), mode: 'block' });
-      try {
-        const app = appWithShield(shield, (configured) => {
-          configured.post('/json', (req, res) => res.json({ received: req.body }));
+    [
+      'A1.1 q=50%25',
+      async () => {
+        const shield = new EthioShield({
+          projectId: 'regression',
+          policy: policy(),
+          mode: 'block',
         });
-        expect((await request(app).post('/json').send({ value: 'x'.repeat(20_000) })).status).toBe(
-          200,
-        );
-      } finally {
-        await shield.close();
-      }
-    }],
-    ['A1.3 300 objects', async () => {
-      const shield = new EthioShield({ projectId: 'regression', policy: policy(), mode: 'block' });
-      try {
-        const app = appWithShield(shield, (configured) => {
-          configured.post('/json', (req, res) => res.json({ received: req.body }));
+        try {
+          const app = appWithShield(shield);
+          expect((await request(app).get('/s?q=50%25')).status).toBe(200);
+        } finally {
+          await shield.close();
+        }
+      },
+    ],
+    [
+      'A1.2 20k field',
+      async () => {
+        const shield = new EthioShield({
+          projectId: 'regression',
+          policy: policy(),
+          mode: 'block',
         });
-        const body = Array.from({ length: 300 }, (_, id) => ({ id, name: 'item', qty: 1 }));
-        expect((await request(app).post('/json').send(body)).status).toBe(200);
-      } finally {
-        await shield.close();
-      }
-    }],
-    ['A1.4 //health', async () => {
-      const shield = new EthioShield({ projectId: 'regression', policy: policy(), mode: 'block' });
-      try {
-        expect((await request(appWithShield(shield)).get('//health')).status).not.toBe(503);
-      } finally {
-        await shield.close();
-      }
-    }],
-    ['A1.5 q=windows', async () => {
-      const shield = new EthioShield({ projectId: 'regression', policy: policy(), mode: 'block' });
-      try {
-        expect((await request(appWithShield(shield)).get('/s?q=windows')).status).toBe(200);
-      } finally {
-        await shield.close();
-      }
-    }],
-    ['A1.6 /files/etc', async () => {
-      const shield = new EthioShield({ projectId: 'regression', policy: policy(), mode: 'block' });
-      try {
-        expect((await request(appWithShield(shield)).get('/files/etc')).status).toBe(200);
-      } finally {
-        await shield.close();
-      }
-    }],
+        try {
+          const app = appWithShield(shield, (configured) => {
+            configured.post('/json', (req, res) => res.json({ received: req.body }));
+          });
+          expect(
+            (
+              await request(app)
+                .post('/json')
+                .send({ value: 'x'.repeat(20_000) })
+            ).status,
+          ).toBe(200);
+        } finally {
+          await shield.close();
+        }
+      },
+    ],
+    [
+      'A1.3 300 objects',
+      async () => {
+        const shield = new EthioShield({
+          projectId: 'regression',
+          policy: policy(),
+          mode: 'block',
+        });
+        try {
+          const app = appWithShield(shield, (configured) => {
+            configured.post('/json', (req, res) => res.json({ received: req.body }));
+          });
+          const body = Array.from({ length: 300 }, (_, id) => ({ id, name: 'item', qty: 1 }));
+          expect((await request(app).post('/json').send(body)).status).toBe(200);
+        } finally {
+          await shield.close();
+        }
+      },
+    ],
+    [
+      'A1.4 //health',
+      async () => {
+        const shield = new EthioShield({
+          projectId: 'regression',
+          policy: policy(),
+          mode: 'block',
+        });
+        try {
+          expect((await request(appWithShield(shield)).get('//health')).status).not.toBe(503);
+        } finally {
+          await shield.close();
+        }
+      },
+    ],
+    [
+      'A1.5 q=windows',
+      async () => {
+        const shield = new EthioShield({
+          projectId: 'regression',
+          policy: policy(),
+          mode: 'block',
+        });
+        try {
+          expect((await request(appWithShield(shield)).get('/s?q=windows')).status).toBe(200);
+        } finally {
+          await shield.close();
+        }
+      },
+    ],
+    [
+      'A1.6 /files/etc',
+      async () => {
+        const shield = new EthioShield({
+          projectId: 'regression',
+          policy: policy(),
+          mode: 'block',
+        });
+        try {
+          expect((await request(appWithShield(shield)).get('/files/etc')).status).toBe(200);
+        } finally {
+          await shield.close();
+        }
+      },
+    ],
   ])('A1 %s', async (name, fn) => {
     // Observed today: 503 (50%25, 20k field, 300 objects, //health) and 403 (windows, /files/etc).
     if (name === 'A1.5 q=windows' || name === 'A1.6 /files/etc') {
@@ -262,53 +310,67 @@ describe('architecture review regression cases', () => {
   });
 
   it.each([
-    ['B1.1 recorded client ip', async () => {
-      const events: SecurityEvent[] = [];
-      const shield = new EthioShield({
-        projectId: 'regression',
-        policy: policy(),
-        mode: 'block',
-        trustedProxy: { addresses: ['127.0.0.1'] },
-        telemetry: { emit: (event) => events.push(event) },
-      });
-      try {
-        const app = appWithShield(shield);
-        await request(app).get('/health').set('x-forwarded-for', '6.6.6.6, 10.0.0.9');
-        expect(events[0]?.client?.ip).toBe('10.0.0.9');
-      } finally {
-        await shield.close();
-      }
-    }],
-    ['B1.2 rotating XFF', async () => {
-      const shield = new EthioShield({
-        projectId: 'regression',
-        policy: policy({
-          rateLimit: {
-            enabled: true,
-            windowSeconds: 60,
-            maxRequests: 100,
-            keyStrategy: 'ip',
-            rules: [
-              { ruleId: 'ip.limit', keyTypes: ['ip'], windowSeconds: 60, maxRequests: 2, action: 'block' },
-            ],
-            failureMode: 'block',
-          },
-        }),
-        mode: 'block',
-        trustedProxy: { addresses: ['127.0.0.1'] },
-      });
-      try {
-        const app = appWithShield(shield);
-        const responses = await Promise.all(
-          Array.from({ length: 6 }, (_, index) =>
-            request(app).get('/health').set('x-forwarded-for', `6.6.6.${index + 1}, 10.0.0.9`),
-          ),
-        );
-        expect(responses.filter((response) => response.status === 403)).toHaveLength(4);
-      } finally {
-        await shield.close();
-      }
-    }],
+    [
+      'B1.1 recorded client ip',
+      async () => {
+        const events: SecurityEvent[] = [];
+        const shield = new EthioShield({
+          projectId: 'regression',
+          policy: policy(),
+          mode: 'block',
+          trustedProxy: { addresses: ['127.0.0.1'] },
+          telemetry: { emit: (event) => events.push(event) },
+        });
+        try {
+          const app = appWithShield(shield);
+          await request(app).get('/health').set('x-forwarded-for', '6.6.6.6, 10.0.0.9');
+          expect(events[0]?.client?.ip).toBe('10.0.0.9');
+        } finally {
+          await shield.close();
+        }
+      },
+    ],
+    [
+      'B1.2 rotating XFF',
+      async () => {
+        const shield = new EthioShield({
+          projectId: 'regression',
+          policy: policy({
+            rateLimit: {
+              enabled: true,
+              windowSeconds: 60,
+              maxRequests: 100,
+              keyStrategy: 'ip',
+              rules: [
+                {
+                  ruleId: 'ip.limit',
+                  keyTypes: ['ip'],
+                  windowSeconds: 60,
+                  maxRequests: 2,
+                  action: 'block',
+                },
+              ],
+              failureMode: 'block',
+            },
+          }),
+          mode: 'block',
+          trustedProxy: { addresses: ['127.0.0.1'] },
+        });
+        try {
+          const app = appWithShield(shield);
+          const responses = await Promise.all(
+            Array.from({ length: 6 }, (_, index) =>
+              request(app)
+                .get('/health')
+                .set('x-forwarded-for', `6.6.6.${index + 1}, 10.0.0.9`),
+            ),
+          );
+          expect(responses.filter((response) => response.status === 403)).toHaveLength(4);
+        } finally {
+          await shield.close();
+        }
+      },
+    ],
   ])('B1 %s', async (name, fn) => {
     // Observed today: recorded ip '6.6.6.6' and 6/6 requests allowed.
     await knownBug(name, fn);
@@ -326,7 +388,13 @@ describe('architecture review regression cases', () => {
             maxRequests: 100,
             keyStrategy: 'ip',
             rules: [
-              { ruleId: 'ip.limit', keyTypes: ['ip'], windowSeconds: 60, maxRequests: 1, action: 'block' },
+              {
+                ruleId: 'ip.limit',
+                keyTypes: ['ip'],
+                windowSeconds: 60,
+                maxRequests: 1,
+                action: 'block',
+              },
             ],
             failureMode: 'block',
           },
@@ -359,7 +427,14 @@ describe('architecture review regression cases', () => {
             maxRequests: 100,
             keyStrategy: 'ip',
             rules: [
-              { ruleId: 'login.limit', keyTypes: ['route'], route: '/login', windowSeconds: 60, maxRequests: 2, action: 'block' },
+              {
+                ruleId: 'login.limit',
+                keyTypes: ['route'],
+                route: '/login',
+                windowSeconds: 60,
+                maxRequests: 2,
+                action: 'block',
+              },
             ],
             failureMode: 'block',
           },
@@ -435,7 +510,9 @@ describe('architecture review regression cases', () => {
         mode: 'block',
       });
       try {
-        expect((await request(appWithShield(shield)).get('/s?q=UNION%20SELECT')).status).not.toBe(403);
+        expect((await request(appWithShield(shield)).get('/s?q=UNION%20SELECT')).status).not.toBe(
+          403,
+        );
       } finally {
         await shield.close();
       }
@@ -449,7 +526,12 @@ describe('architecture review regression cases', () => {
         projectId: 'regression',
         policy: policy({
           rules: [
-            { ruleId: 'input.sql_injection_indicator', category: 'input', enabled: true, action: 'monitor' },
+            {
+              ruleId: 'input.sql_injection_indicator',
+              category: 'input',
+              enabled: true,
+              action: 'monitor',
+            },
             { ruleId: 'input.xss_indicator', category: 'input', enabled: true, action: 'block' },
           ],
         }),
@@ -505,9 +587,7 @@ describe('architecture review regression cases', () => {
     try {
       const app = appWithShield(shield);
       await request(app).get(`/files/${'a'.repeat(600)}/../etc`);
-      expect(onError).toHaveBeenCalledWith(
-        expect.objectContaining({ code: 'event_error' }),
-      );
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'event_error' }));
     } finally {
       await shield.close();
     }

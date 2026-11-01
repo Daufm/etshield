@@ -359,18 +359,18 @@ runtime enforcement silently.
 
 ## 8. Current capability boundary
 
-| Capability | Current status |
-|---|---|
-| SQL, NoSQL, XSS, path traversal indicators | Implemented, tested, heuristic |
-| Canonicalization provenance | Not implemented |
-| Hard synchronous timeout | Not implemented and not claimable |
-| Body-state enforcement | Incomplete; requires M1 |
-| Sink-level exploitability | Not implemented |
-| Manual instrumentation interfaces | Implemented |
-| Automatic runtime instrumentation | Not implemented |
-| Rate limiting/correlation | Implemented when configured; shared-store dependent |
-| Authentication/authorization | Host-application responsibility |
-| SSRF, command injection, XXE, CSRF, webhook verification | Not implemented |
+| Capability                                               | Current status                                      |
+| -------------------------------------------------------- | --------------------------------------------------- |
+| SQL, NoSQL, XSS, path traversal indicators               | Implemented, tested, heuristic                      |
+| Canonicalization provenance                              | Not implemented                                     |
+| Hard synchronous timeout                                 | Not implemented and not claimable                   |
+| Body-state enforcement                                   | Incomplete; requires M1                             |
+| Sink-level exploitability                                | Not implemented                                     |
+| Manual instrumentation interfaces                        | Implemented                                         |
+| Automatic runtime instrumentation                        | Not implemented                                     |
+| Rate limiting/correlation                                | Implemented when configured; shared-store dependent |
+| Authentication/authorization                             | Host-application responsibility                     |
+| SSRF, command injection, XXE, CSRF, webhook verification | Not implemented                                     |
 
 No milestone is complete until its source changes, adversarial tests,
 compatibility risks, acceptance criteria, and rollback path have been reviewed.

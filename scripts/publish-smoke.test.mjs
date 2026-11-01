@@ -61,11 +61,10 @@ test('offline install diagnostic', () => {
   try {
     try {
       writeFileSync(join(temporaryDirectory, 'package.json'), '{"private":true}\n');
-      const tarball = execFileSync(
-        npm,
-        ['pack', '--pack-destination', temporaryDirectory],
-        { cwd: join(root, 'packages/sdk-node'), encoding: 'utf8' },
-      )
+      const tarball = execFileSync(npm, ['pack', '--pack-destination', temporaryDirectory], {
+        cwd: join(root, 'packages/sdk-node'),
+        encoding: 'utf8',
+      })
         .trim()
         .split('\n')
         .at(-1);
@@ -86,10 +85,7 @@ test('offline install diagnostic', () => {
       );
       console.log('offline install diagnostic: install succeeded');
     } catch (error) {
-      const text = `${error.stdout ?? ''}\n${error.stderr ?? ''}`.replaceAll(
-        '%2f',
-        '/',
-      );
+      const text = `${error.stdout ?? ''}\n${error.stderr ?? ''}`.replaceAll('%2f', '/');
       console.log(`offline install diagnostic: ${text}`);
     }
   } finally {

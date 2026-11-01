@@ -203,9 +203,13 @@ export class DetectionEngine {
       )
       .map((error) => error.code);
     const failedCodes = errors.filter((error) =>
-      ['detector_error', 'invalid_finding', 'parser_error', 'budget_exceeded', 'malformed_encoding'].includes(
-        error.code,
-      ),
+      [
+        'detector_error',
+        'invalid_finding',
+        'parser_error',
+        'budget_exceeded',
+        'malformed_encoding',
+      ].includes(error.code),
     );
     const outcome =
       findings.length > 0

@@ -10,10 +10,7 @@ export function sanitizeEventRoute(path: string): string {
     .split('')
     .map((character) => {
       const code = character.codePointAt(0) ?? 0;
-      return character === '?' ||
-        character === '#' ||
-        code <= 0x1f ||
-        code === 0x7f
+      return character === '?' || character === '#' || code <= 0x1f || code === 0x7f
         ? '_'
         : character;
     })
